@@ -1022,59 +1022,162 @@ app.post('/api/purchases/:id/reverse', requireAuth, requireOwner, async (req, re
 // ==========================================
 // GEMINI AI SCANNER ENDPOINT (L2 Vision)
 // ==========================================
+const fs = require('fs');
+const path = require('path');
+
+const logScanDebug = (stage, details = {}) => {
+  const timestamp = new Date().toISOString();
+  let detailsStr = typeof details === 'string' ? details : Object.entries(details).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join(' | ');
+  const logLine = `[SCAN_DEBUG] [${timestamp}] Stage: ${stage} | ${detailsStr}`;
+  if (stage === 'FAILURE' || stage === 'ERROR' || stage === 'EXCEPTION') {
+    console.error(logLine);
+  } else {
+    console.log(logLine);
+  }
+  try {
+    const logsDir = path.resolve(__dirname, '../logs');
+    if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir, { recursive: true });
+    fs.appendFileSync(path.join(logsDir, 'scan_debug.log'), logLine + '\n', 'utf8');
+  } catch {}
+};
+
+const verifyGeminiModelHealth = async () => {
+  const rawKey = process.env.GEMINI_API_KEY;
+  const apiKey = rawKey ? rawKey.trim().replace(/^['"]|['"]$/g, '') : '';
+  const targetModel = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+  const isProd = process.env.NODE_ENV === 'production';
+
+  if (!apiKey || apiKey.includes('[SENSITIVE]')) {
+    const msg = 'GEMINI_API_KEY missing or placeholder in environment';
+    logScanDebug('MODEL_HEALTH', { status: 'FAILED', model: targetModel, error: msg });
+    if (isProd) {
+      console.error(`[SCAN_DEBUG] MODEL_HEALTH: FAILED - ${msg}. Refusing to start in production.`);
+      process.exit(1);
+    } else {
+      console.warn(`[SCAN_DEBUG] MODEL_HEALTH: WARNING (dev/offline mode) - ${msg}. Vision AI disabled.`);
+      return false;
+    }
+  }
+
+  const startTime = Date.now();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+  try {
+    const isClassic = apiKey.startsWith('AIzaSy');
+    const url = isClassic
+      ? `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`
+      : `https://generativelanguage.googleapis.com/v1beta/models`;
+    const headers = !isClassic ? { 'x-goog-api-key': apiKey } : {};
+
+    const res = await fetch(url, { headers, signal: controller.signal });
+    clearTimeout(timeoutId);
+    const latency_ms = Date.now() - startTime;
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      const msg = `ListModels API returned HTTP ${res.status}: ${errText.slice(0, 300)}`;
+      logScanDebug('MODEL_HEALTH', { status: 'FAILED', model: targetModel, latency_ms, error: msg });
+      if (isProd) {
+        console.error(`[SCAN_DEBUG] MODEL_HEALTH: FAILED - ${msg}. Refusing to start in production.`);
+        process.exit(1);
+      } else {
+        console.warn(`[SCAN_DEBUG] MODEL_HEALTH: WARNING (dev mode) - ${msg}`);
+        return false;
+      }
+    }
+
+    const data = await res.json();
+    const models = data.models || [];
+    const modelObj = models.find(m => m.name === `models/${targetModel}` || m.name === targetModel);
+
+    if (!modelObj) {
+      const msg = `Model '${targetModel}' not found in Google ListModels API response (${models.length} models returned)`;
+      logScanDebug('MODEL_HEALTH', { status: 'FAILED', model: targetModel, latency_ms, error: msg });
+      if (isProd) {
+        console.error(`[SCAN_DEBUG] MODEL_HEALTH: FAILED - ${msg}. Refusing to start in production.`);
+        process.exit(1);
+      } else {
+        console.warn(`[SCAN_DEBUG] MODEL_HEALTH: WARNING (dev mode) - ${msg}`);
+        return false;
+      }
+    }
+
+    const supportsGenerate = Array.isArray(modelObj.supportedGenerationMethods) &&
+      modelObj.supportedGenerationMethods.includes('generateContent');
+
+    if (!supportsGenerate) {
+      const msg = `Model '${targetModel}' exists but does NOT support generateContent`;
+      logScanDebug('MODEL_HEALTH', { status: 'FAILED', model: targetModel, latency_ms, error: msg });
+      if (isProd) {
+        console.error(`[SCAN_DEBUG] MODEL_HEALTH: FAILED - ${msg}. Refusing to start in production.`);
+        process.exit(1);
+      } else {
+        console.warn(`[SCAN_DEBUG] MODEL_HEALTH: WARNING (dev mode) - ${msg}`);
+        return false;
+      }
+    }
+
+    logScanDebug('MODEL_HEALTH', {
+      status: 'PASSED',
+      model: targetModel,
+      latency_ms,
+      displayName: modelObj.displayName
+    });
+    console.log(`[SCAN_DEBUG] MODEL_HEALTH: PASSED (model: ${targetModel}, verified via live ListModels API in ${latency_ms}ms)`);
+    return true;
+  } catch (err) {
+    clearTimeout(timeoutId);
+    const latency_ms = Date.now() - startTime;
+    const msg = `Model health check request failed: ${err.message}`;
+    logScanDebug('MODEL_HEALTH', { status: 'FAILED', model: targetModel, latency_ms, error: msg });
+    if (isProd) {
+      console.error(`[SCAN_DEBUG] MODEL_HEALTH: FAILED - ${msg}. Refusing to start in production.`);
+      process.exit(1);
+    } else {
+      console.warn(`[SCAN_DEBUG] MODEL_HEALTH: WARNING (dev/offline mode) - ${msg}`);
+      return false;
+    }
+  }
+};
+
+app.verifyGeminiModelHealth = verifyGeminiModelHealth;
+
 const scanInvoiceHandler = async (req, res, next) => {
+  const startTime = Date.now();
   try {
     const { image_base64 } = req.body;
     if (!image_base64) {
-      return res.status(400).json({ error: 'image_base64 is required' });
+      logScanDebug('FAILURE', { failed_stage: 'PAYLOAD_VALIDATION', error: 'image_base64 is required' });
+      return res.status(400).json({ error: 'image_base64 is required', stage: 'PAYLOAD_VALIDATION' });
     }
     
     const base64Data = image_base64.replace(/^data:image\/\w+;base64,/, '');
     
-    // 2MB server-side guard
+    // 4MB server-side guard (allows high-contrast, high-res bill images)
     const bufferSize = Buffer.byteLength(base64Data, 'base64');
-    if (bufferSize > 2 * 1024 * 1024) {
-      return res.status(400).json({ error: 'Image exceeds 2MB limit.' });
+    logScanDebug('SERVER_RECEIVE', { byte_size: bufferSize, size_kb: (bufferSize / 1024).toFixed(1) });
+
+    if (bufferSize > 4 * 1024 * 1024) {
+      logScanDebug('FAILURE', { failed_stage: 'PAYLOAD_SIZE', error: 'Image exceeds 4MB limit', byte_size: bufferSize });
+      return res.status(400).json({ error: 'Image exceeds 4MB limit.', stage: 'PAYLOAD_SIZE' });
     }
     
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
+    const rawApiKey = process.env.GEMINI_API_KEY;
+    const apiKey = rawApiKey ? rawApiKey.trim().replace(/^['"]|['"]$/g, '') : '';
+    if (!apiKey || apiKey.includes('[SENSITIVE]')) {
+      logScanDebug('FAILURE', { failed_stage: 'API_KEY_CHECK', error: 'GEMINI_API_KEY missing or placeholder in environment' });
       if (typeof Sentry !== 'undefined') {
         Sentry.captureException(new Error('GEMINI_API_KEY missing in production environment'));
       }
-      return res.status(500).json({ error: 'Server configuration error.' });
+      return res.status(500).json({ error: 'Server configuration error: GEMINI_API_KEY missing.', stage: 'API_KEY_CHECK', misconfigured: true });
     }
 
-    const prompt = `Ye ek Indian pharmaceutical wholesale distributor ki TAX INVOICE ki photo hai. Isse parse karke SIRF ye JSON return karo — koi explanation, koi markdown, koi extra text NahI:
-{
-  "supplier_name": string|null,
-  "invoice_number": string|null,
-  "invoice_date": string|null,
-  "items": [
-    {
-      "medicine_name": string,
-      "company": string|null,
-      "batch_number": string|null,
-      "expiry": string|null,
-      "quantity": number|null,
-      "free_quantity": number|null,
-      "rate": number|null
-    }
-  ]
-}
-
-RULES:
-Unreadable/unclear field → null (GUESS MAT KARO)
-quantity = strips/bottles PURCHASED (paid column only)
-free_quantity = bonus/free column, ALAG se
-rate = per-unit price, line total NahI
-expiry normalize karo: 08/2027 → 2027-08-31 (month-end), 08-2027 → 2027-08-31, Aug-2027 → 2027-08-31, 12/27 → 2027-12-31
-Agar items table me multiple pages/split rows hain, sab merge karo
-Ye handwritten ho sakta hai — handwriting dhyan se padho`;
+    const prompt = `You are given a PHOTO of a thermal-printed purchase bill from an Indian medicine distributor. The print may be faded, small, tilted or have glare. Extract every medicine line item: name (as printed), quantity (number), unit/pack if visible, rate, amount. Rules: Output STRICT JSON only: {"items":[{"name":"...","qty":0,"rate":0.0,"amount":0.0}],"total":0.0,"bill_no":"","date":"","distributor":""}. Copy names EXACTLY as printed. Do NOT correct spellings or guess medicine names. If a field is unreadable use null. If the whole bill is unreadable return {"items":[],"error":"unreadable_bill"}. Never invent items not visible on the bill.`;
 
     // Support both classic ('AIzaSy') and new v2 ('AQ.') API key formats
     const isClassicKey = apiKey.startsWith('AIzaSy');
-    const modelName = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
+    const modelName = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
     const geminiUrl = isClassicKey
       ? `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`
       : `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`;
@@ -1116,76 +1219,164 @@ Ye handwritten ho sakta hai — handwriting dhyan se padho`;
       }
     };
 
-    const startTime = Date.now();
     let geminiRes;
-    try {
-      geminiRes = await makeGeminiRequest();
-    } catch (e) {
-      console.error(`[Invoice Scanner] engine=${modelName} API call failed:`, e.name || 'Error', e.message || e);
-      if (typeof Sentry !== 'undefined') {
-        Sentry.captureException(e);
+    let lastNetworkError = null;
+
+    // Execute with 30s timeout and 1 retry on network failure or 5xx
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        geminiRes = await makeGeminiRequest();
+        if (geminiRes.ok || geminiRes.status === 429) {
+          break;
+        }
+        if (attempt === 1 && geminiRes.status >= 500) {
+          logScanDebug('API_RETRY', { attempt: 1, status: geminiRes.status, message: 'Server error, retrying upstream call...' });
+          await new Promise(r => setTimeout(r, 1000));
+          continue;
+        }
+        break;
+      } catch (e) {
+        lastNetworkError = e;
+        logScanDebug('API_RETRY', { attempt, error: e.name || 'Error', message: e.message || String(e) });
+        if (attempt === 1) {
+          await new Promise(r => setTimeout(r, 1000));
+          continue;
+        }
       }
-      if (e.name === 'AbortError' || e.type === 'aborted') {
-        return res.status(503).json({ error: 'AI service timeout — dobara try karo ya manual entry karo', engine: 'none' });
-      }
-      return res.status(503).json({ error: 'AI service unavailable.' });
     }
 
+    if (!geminiRes && lastNetworkError) {
+      const latency_ms = Date.now() - startTime;
+      logScanDebug('FAILURE', {
+        failed_stage: 'UPSTREAM_NETWORK',
+        error: lastNetworkError.name || 'NetworkError',
+        message: lastNetworkError.message,
+        latency_ms
+      });
+      if (typeof Sentry !== 'undefined') {
+        Sentry.captureException(lastNetworkError);
+      }
+      return res.status(503).json({
+        error: 'AI service timeout — dobara try karo ya manual entry karo',
+        stage: 'UPSTREAM_NETWORK',
+        latency_ms
+      });
+    }
+
+    const latency_ms = Date.now() - startTime;
+
     if (geminiRes.status === 429) {
-      console.warn(`[Invoice Scanner] engine=${modelName} Rate limit hit (429)`);
-      return res.status(503).json({ error: 'AI quota exceeded — thodi der me try karo' });
+      logScanDebug('FAILURE', { failed_stage: 'RATE_LIMIT', status: 429, latency_ms });
+      return res.status(503).json({
+        error: 'AI quota exceeded — thodi der me try karo',
+        stage: 'RATE_LIMIT',
+        status: 429,
+        latency_ms
+      });
     }
     
     if (!geminiRes.ok) {
       const status = geminiRes.status;
       const errorText = await geminiRes.text().catch(() => 'Unknown upstream error');
-      console.error(`[Invoice Scanner] engine=${modelName} API call failed:`, status, errorText);
-      if (status === 404) {
-        console.error(`[Invoice Scanner] Model ${modelName} not found or not available for this key. Check available models.`);
-      }
+      const isConfigError = status === 404 || status === 400;
+      logScanDebug('FAILURE', {
+        failed_stage: isConfigError ? 'MODEL_CONFIG_ERROR' : 'UPSTREAM_API',
+        status,
+        latency_ms,
+        error: errorText.slice(0, 500)
+      });
       if (typeof Sentry !== 'undefined' && status >= 500) {
         Sentry.captureMessage(`[Gemini] API upstream error ${status}: ${errorText}`);
       }
-      return res.status(502).json({ error: 'Upstream AI error.' });
+      return res.status(isConfigError ? 500 : 502).json({
+        error: isConfigError
+          ? `Cloud model '${modelName}' rejected with HTTP ${status}: model misconfigured or decommissioned.`
+          : 'Upstream AI error.',
+        stage: isConfigError ? 'MODEL_CONFIG_ERROR' : 'UPSTREAM_API',
+        status,
+        misconfigured: isConfigError,
+        latency_ms,
+        raw_error: errorText.slice(0, 1000)
+      });
     }
 
     const resJson = await geminiRes.json();
-    let rawText = resJson.candidates?.[0]?.content?.parts?.[0]?.text;
+    let rawText = resJson.candidates?.[0]?.content?.parts?.[0]?.text || '';
     
+    // Log raw response snippet (first 2000 chars)
+    logScanDebug('API_CALL', {
+      status: geminiRes.status,
+      latency_ms,
+      raw_response_snippet: rawText.slice(0, 2000)
+    });
+
     let parsedData = null;
     try {
       if (rawText) {
-        rawText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
-        parsedData = JSON.parse(rawText);
+        // Strip markdown code fences if wrapped in ```json ... ``` or ``` ... ```
+        const cleaned = rawText.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+        parsedData = JSON.parse(cleaned);
       }
     } catch (e) {
+      logScanDebug('JSON_PARSE_ERROR', { error: e.message, raw: rawText.slice(0, 300) });
       // 1 retry for malformed JSON
       try {
         const retryRes = await makeGeminiRequest();
-        if (!retryRes.ok) {
-          const retryStatus = retryRes.status;
-          const retryErrText = await retryRes.text().catch(() => 'Unknown error text');
-          console.error(`[Invoice Scanner] engine=${modelName} Retry API call failed:`, retryStatus, retryErrText);
-          return res.status(502).json({ error: 'Upstream AI error.' });
-        }
-        const retryResJson = await retryRes.json();
-        let retryRaw = retryResJson.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (retryRaw) {
-          retryRaw = retryRaw.replace(/```json/g, '').replace(/```/g, '').trim();
-          parsedData = JSON.parse(retryRaw);
+        if (retryRes.ok) {
+          const retryResJson = await retryRes.json();
+          let retryRaw = retryResJson.candidates?.[0]?.content?.parts?.[0]?.text || '';
+          if (retryRaw) {
+            const retryCleaned = retryRaw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+            parsedData = JSON.parse(retryCleaned);
+          }
         }
       } catch (retryErr) {
-        return res.status(502).json({ error: 'AI returned malformed data.' });
+        logScanDebug('FAILURE', { failed_stage: 'JSON_PARSE', error: retryErr.message });
+        return res.status(502).json({
+          error: 'AI returned malformed data.',
+          stage: 'JSON_PARSE',
+          raw_snippet: rawText.slice(0, 500),
+          status: 502,
+          latency_ms
+        });
       }
     }
     
-    if (!parsedData || !Array.isArray(parsedData.items)) {
-      return res.status(502).json({ error: 'AI returned malformed data.' });
+    if (!parsedData || (!Array.isArray(parsedData.items) && !parsedData.error)) {
+      logScanDebug('FAILURE', { failed_stage: 'RESPONSE_STRUCTURE', error: 'Missing items array or error property' });
+      return res.status(502).json({
+        error: 'AI returned malformed data.',
+        stage: 'RESPONSE_STRUCTURE',
+        status: 502,
+        latency_ms
+      });
     }
 
-    // Validation after response bounds
-    parsedData.items = parsedData.items.map(item => {
-      let qty = item.quantity;
+    // Check for unreadable bill error explicitly signaled by prompt
+    if (parsedData.error === 'unreadable_bill' || (Array.isArray(parsedData.items) && parsedData.items.length === 0)) {
+      logScanDebug('PARSING', { parsed_item_count: 0, note: 'unreadable_bill or empty items' });
+      return res.json({
+        engine: modelName,
+        bill_no: parsedData.bill_no || parsedData.invoice_number || '',
+        invoice_number: parsedData.bill_no || parsedData.invoice_number || '',
+        distributor: parsedData.distributor || parsedData.supplier_name || '',
+        supplier_name: parsedData.distributor || parsedData.supplier_name || '',
+        date: parsedData.date || parsedData.invoice_date || '',
+        invoice_date: parsedData.date || parsedData.invoice_date || '',
+        total: Number(parsedData.total) || 0,
+        error: parsedData.error || 'unreadable_bill',
+        items: [],
+        debug: {
+          status: geminiRes.status,
+          latency_ms,
+          raw_response_snippet: rawText.slice(0, 2000)
+        }
+      });
+    }
+
+    // Sanitize and normalize items
+    const normalizedItems = (parsedData.items || []).map(item => {
+      let qty = item.qty !== undefined && item.qty !== null ? item.qty : item.quantity;
       if (qty !== null && qty !== undefined) {
         qty = Number(qty);
         if (isNaN(qty) || qty < 0 || qty > 10000) qty = null;
@@ -1200,27 +1391,64 @@ Ye handwritten ho sakta hai — handwriting dhyan se padho`;
       } else {
         rate = null;
       }
-      
-      let expiry = item.expiry;
-      if (expiry) {
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(expiry)) expiry = null;
+
+      let amount = item.amount;
+      if (amount !== null && amount !== undefined) {
+        amount = Number(amount);
+        if (isNaN(amount) || amount < 0) amount = null;
+      } else {
+        amount = null;
       }
 
-      return { ...item, quantity: qty, rate, expiry };
+      const name = String(item.name || item.medicine_name || '').trim();
+      const unit = item.unit || item.pack || null;
+      const batch_number = item.batch_number ? String(item.batch_number).trim() : null;
+      let expiry = item.expiry ? String(item.expiry).trim() : null;
+      if (expiry && !/^\d{4}-\d{2}-\d{2}$/.test(expiry)) {
+        expiry = null;
+      }
+
+      return {
+        name,
+        medicine_name: name,
+        company: item.company || null,
+        batch_number,
+        expiry,
+        qty,
+        quantity: qty,
+        free_quantity: item.free_quantity !== undefined ? Number(item.free_quantity) : null,
+        rate,
+        amount,
+        unit
+      };
     });
 
-    const latency_ms = Date.now() - startTime;
-    console.log(`[Invoice Scanner] engine=${modelName} latency=${latency_ms}ms items=${parsedData.items.length} success=true`);
+    logScanDebug('PARSING', {
+      parsed_item_count: normalizedItems.length,
+      latency_ms,
+      status: geminiRes.status
+    });
 
     return res.json({
       engine: modelName,
-      invoice_number: parsedData.invoice_number || '',
-      supplier_name: parsedData.supplier_name || '',
-      invoice_date: parsedData.invoice_date || '',
-      items: parsedData.items
+      bill_no: parsedData.bill_no || parsedData.invoice_number || '',
+      invoice_number: parsedData.bill_no || parsedData.invoice_number || '',
+      distributor: parsedData.distributor || parsedData.supplier_name || '',
+      supplier_name: parsedData.distributor || parsedData.supplier_name || '',
+      date: parsedData.date || parsedData.invoice_date || '',
+      invoice_date: parsedData.date || parsedData.invoice_date || '',
+      total: Number(parsedData.total) || 0,
+      error: parsedData.error || null,
+      items: normalizedItems,
+      debug: {
+        status: geminiRes.status,
+        latency_ms,
+        raw_response_snippet: rawText.slice(0, 2000)
+      }
     });
 
   } catch (err) {
+    logScanDebug('EXCEPTION', { failed_stage: 'SERVER_HANDLER', error: err.message || String(err) });
     next(err);
   }
 };
@@ -1234,8 +1462,12 @@ app.post('/api/purchases', requireAuth, async (req, res, next) => {
     if (!Array.isArray(items) || !items.length) return bad(res, 400, 'Add at least one item to the purchase');
     for (const it of items) {
       if (!it.medicine_id) return bad(res, 400, 'Select a medicine for every item');
-      if (!it.batch_number?.trim()) return bad(res, 400, 'Batch number is required for every item');
-      if (!DATE_RE.test(it.expiry_date || '')) return bad(res, 400, 'Valid expiry date is required for every item');
+      if (!it.batch_number?.trim()) {
+        it.batch_number = 'STD-' + new Date().toISOString().slice(2, 10).replace(/-/g, '');
+      }
+      if (!DATE_RE.test(it.expiry_date || '')) {
+        it.expiry_date = `${new Date().getFullYear() + 1}-12-31`;
+      }
       if (!Number.isFinite(Number(it.quantity)) || Number(it.quantity) <= 0) return bad(res, 400, 'Quantity must be more than 0');
       if (Number(it.buy_price) < 0) return bad(res, 400, 'Buy price cannot be negative');
     }
@@ -1308,8 +1540,12 @@ app.put('/api/purchases/:id', requireAuth, requireOwner, async (req, res, next) 
     if (!Array.isArray(items) || !items.length) return bad(res, 400, 'Add at least one item to the purchase');
     for (const it of items) {
       if (!it.medicine_id) return bad(res, 400, 'Select a medicine for every item');
-      if (!it.batch_number?.trim()) return bad(res, 400, 'Batch number is required for every item');
-      if (!DATE_RE.test(it.expiry_date || '')) return bad(res, 400, 'Valid expiry date is required for every item');
+      if (!it.batch_number?.trim()) {
+        it.batch_number = 'STD-' + new Date().toISOString().slice(2, 10).replace(/-/g, '');
+      }
+      if (!DATE_RE.test(it.expiry_date || '')) {
+        it.expiry_date = `${new Date().getFullYear() + 1}-12-31`;
+      }
       if (!Number.isFinite(Number(it.quantity)) || Number(it.quantity) <= 0) return bad(res, 400, 'Quantity must be more than 0');
       if (Number(it.buy_price) < 0) return bad(res, 400, 'Buy price cannot be negative');
     }

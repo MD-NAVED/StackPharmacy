@@ -1,5 +1,6 @@
 import { createWorker } from 'tesseract.js';
 import { api } from '../api.js';
+import { addScanLog } from './scanLogger.js';
 
 /**
  * Normalizes date strings like "08/28", "12-2027", "15/08/2026" into YYYY-MM-DD.
@@ -45,24 +46,42 @@ function normalizeDate(rawDate) {
 }
 
 /**
- * Downsamples high-resolution mobile photos (e.g. 12MP-48MP, 5-12MB) to max 1280px wide
- * using an off-screen HTML5 Canvas. Produces a ~200-350KB JPEG blob to prevent mobile
- * browser tab crashes / WebAssembly Out-Of-Memory errors on budget devices.
+ * Prepares and compresses high-resolution mobile photos (12MP-48MP) for Gemini Vision.
+ * Maintains sharp character edges on low-contrast thermal print:
+ * - Ensures long edge is up to 2000px (never downsampled below 1500px if original is larger).
+ * - High JPEG quality (0.92) to prevent compression noise around dot-matrix/thermal text.
+ * - Enforces minimum payload threshold (~500KB-1.5MB) and rejects thumbnail downscaling.
+ * - Logs dimensions and byte size with tag SCAN_DEBUG.
  */
-export async function compressImage(file, maxWidth = 1280, quality = 0.8) {
+export async function compressImage(file, maxLongEdge = 2000, quality = 0.92) {
   if (!file || typeof window === 'undefined' || (!window.createImageBitmap && !window.Image)) {
+    addScanLog('COMPRESSION', { note: 'No canvas/image API, sending raw file', size: file?.size });
     return file;
   }
+
+  const computeScaledDimensions = (origW, origH) => {
+    const longEdge = Math.max(origW, origH);
+    if (longEdge <= maxLongEdge) {
+      return { width: origW, height: origH };
+    }
+    if (origW >= origH) {
+      return {
+        width: maxLongEdge,
+        height: Math.round((origH * maxLongEdge) / origW)
+      };
+    } else {
+      return {
+        width: Math.round((origW * maxLongEdge) / origH),
+        height: maxLongEdge
+      };
+    }
+  };
 
   // Modern browser path: automatic EXIF orientation normalization
   if (typeof window.createImageBitmap === 'function') {
     try {
       const bitmap = await window.createImageBitmap(file, { imageOrientation: 'from-image' });
-      let { width, height } = bitmap;
-      if (width > maxWidth) {
-        height = Math.round((height * maxWidth) / width);
-        width = maxWidth;
-      }
+      const { width, height } = computeScaledDimensions(bitmap.width, bitmap.height);
       const canvas = document.createElement('canvas');
       canvas.width = width;
       canvas.height = height;
@@ -70,15 +89,31 @@ export async function compressImage(file, maxWidth = 1280, quality = 0.8) {
       if (ctx) {
         ctx.drawImage(bitmap, 0, 0, width, height);
         if (bitmap.close) bitmap.close();
-        const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+        let blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
         canvas.width = 0;
         canvas.height = 0;
-        if (blob && blob.size < file.size) return blob;
+
+        if (blob) {
+          // If compressed blob is below 500KB but original file was >= 500KB and within 4MB,
+          // prefer the higher-resolution original to preserve thermal print contrast
+          let finalBlob = blob;
+          if (blob.size < 500 * 1024 && file.size >= 500 * 1024 && file.size <= 4 * 1024 * 1024) {
+            finalBlob = file;
+          }
+          addScanLog('COMPRESSION', {
+            final_byte_size: finalBlob.size,
+            size_kb: (finalBlob.size / 1024).toFixed(1),
+            dimensions: `${width}x${height}`,
+            quality,
+            orig_size_kb: (file.size / 1024).toFixed(1)
+          });
+          return finalBlob;
+        }
         return file;
       }
       if (bitmap.close) bitmap.close();
-    } catch {
-      // Fallback to Image element on older browser contexts
+    } catch (e) {
+      addScanLog('COMPRESSION_FALLBACK', { error: e.message });
     }
   }
 
@@ -87,16 +122,13 @@ export async function compressImage(file, maxWidth = 1280, quality = 0.8) {
     const url = URL.createObjectURL(file);
     img.onload = () => {
       URL.revokeObjectURL(url);
-      let { width, height } = img;
-      if (width > maxWidth) {
-        height = Math.round((height * maxWidth) / width);
-        width = maxWidth;
-      }
+      const { width, height } = computeScaledDimensions(img.width, img.height);
       const canvas = document.createElement('canvas');
       canvas.width = width;
       canvas.height = height;
       const ctx = canvas.getContext('2d');
       if (!ctx) {
+        addScanLog('COMPRESSION', { note: 'Canvas context null, returning original', size: file.size });
         return resolve(file);
       }
       ctx.drawImage(img, 0, 0, width, height);
@@ -104,11 +136,18 @@ export async function compressImage(file, maxWidth = 1280, quality = 0.8) {
         (blob) => {
           canvas.width = 0;
           canvas.height = 0;
-          if (blob && blob.size < file.size) {
-            resolve(blob);
-          } else {
-            resolve(file);
+          let finalBlob = blob || file;
+          if (blob && blob.size < 500 * 1024 && file.size >= 500 * 1024 && file.size <= 4 * 1024 * 1024) {
+            finalBlob = file;
           }
+          addScanLog('COMPRESSION', {
+            final_byte_size: finalBlob.size,
+            size_kb: (finalBlob.size / 1024).toFixed(1),
+            dimensions: `${width}x${height}`,
+            quality,
+            orig_size_kb: (file.size / 1024).toFixed(1)
+          });
+          resolve(finalBlob);
         },
         'image/jpeg',
         quality
@@ -116,6 +155,7 @@ export async function compressImage(file, maxWidth = 1280, quality = 0.8) {
     };
     img.onerror = () => {
       URL.revokeObjectURL(url);
+      addScanLog('COMPRESSION_ERROR', { error: 'Failed to load image element' });
       resolve(file);
     };
     img.src = url;
@@ -331,22 +371,52 @@ export function parseInvoiceText(rawText, medicinesList = []) {
  */
 
 /**
- * Sends image to the new Gemini Vision server endpoint.
+ * Sends image to the Gemini Vision server endpoint.
  */
 export async function parseInvoiceViaServer(base64Image, medicinesList) {
-  const data = await api('/api/purchases/scan-invoice', {
-    method: 'POST',
-    body: { image_base64: base64Image },
+  const startTime = Date.now();
+  let data;
+  try {
+    data = await api('/api/purchases/scan-invoice', {
+      method: 'POST',
+      body: { image_base64: base64Image },
+    });
+  } catch (err) {
+    const latency_ms = Date.now() - startTime;
+    addScanLog('FAILURE', {
+      failed_stage: 'API_CALL',
+      status: err.status || 502,
+      latency_ms,
+      error: err.message || String(err),
+      raw_error_body: JSON.stringify(err.data || {})
+    });
+    throw err;
+  }
+
+  const latency_ms = Date.now() - startTime;
+  addScanLog('API_CALL', {
+    status: data.debug?.status || 200,
+    latency_ms: data.debug?.latency_ms || latency_ms,
+    raw_response: (data.debug?.raw_response_snippet || JSON.stringify(data.items || [])).slice(0, 2000)
   });
   
-  // Transform Gemini output to match existing Tesseract output shape
-  const transformedItems = (data.items || []).map(item => {
-     const matchResult = scoreMedicineMatches((item.medicine_name || '') + ' ' + (item.company || ''), medicinesList);
-     const { topMatch, candidates, isConfident } = matchResult;
-     
-     return {
+  // Transform Gemini output to match UI shape
+  let transformedItems = [];
+  try {
+    transformedItems = (data.items || []).map(item => {
+      const itemName = String(item.name || item.medicine_name || '').trim();
+      const matchResult = scoreMedicineMatches(itemName + (item.company ? ' ' + item.company : ''), medicinesList);
+      const { topMatch, candidates, isConfident } = matchResult;
+      
+      const qtyVal = item.qty !== undefined && item.qty !== null ? item.qty : item.quantity;
+      const qtyStr = qtyVal !== null && qtyVal !== undefined ? String(qtyVal) : '';
+      const rateVal = item.rate !== undefined && item.rate !== null ? item.rate : item.buy_price;
+      const rateStr = rateVal !== null && rateVal !== undefined ? String(rateVal) : '';
+
+      return {
         medicine_id: isConfident ? topMatch.id : '',
-        matchedName: isConfident ? `${topMatch.name} (${topMatch.company})` : '',
+        name: itemName,
+        matchedName: isConfident ? `${topMatch.name} (${topMatch.company})` : itemName,
         candidates: candidates.map((c) => ({
           id: c.id,
           name: c.name,
@@ -356,18 +426,33 @@ export async function parseInvoiceViaServer(base64Image, medicinesList) {
         lowConfidence: !isConfident && candidates.length > 0,
         batch_number: (item.batch_number || '').toUpperCase(),
         expiry_date: item.expiry || '',
-        quantity: item.quantity !== null && item.quantity !== undefined ? String(item.quantity) : '',
+        quantity: qtyStr,
         free_quantity: item.free_quantity !== null && item.free_quantity !== undefined ? String(item.free_quantity) : '',
-        buy_price: item.rate !== null && item.rate !== undefined ? String(item.rate) : '',
-        rawLine: `${item.medicine_name} ${item.batch_number||''} ${item.expiry||''} ${item.quantity||''} ${item.rate||''}`
-     };
-  });
+        buy_price: rateStr,
+        rawLine: `${itemName} ${item.batch_number || ''} ${item.expiry || ''} ${qtyStr} ${rateStr}`.trim()
+      };
+    });
+
+    addScanLog('PARSING', {
+      parsed_item_count: transformedItems.length,
+      has_error: !!data.error,
+      error: data.error || null
+    });
+  } catch (parseEx) {
+    addScanLog('FAILURE', {
+      failed_stage: 'CLIENT_RESPONSE_MAPPING',
+      error: parseEx.message || String(parseEx)
+    });
+    throw parseEx;
+  }
   
   return {
-    engine: data.engine || 'gemini',
-    supplier_name: data.supplier_name || '',
-    invoice_number: data.invoice_number || '',
-    date: data.invoice_date || '',
+    engine: data.engine || 'gemini-3.8-flash',
+    supplier_name: data.distributor || data.supplier_name || '',
+    invoice_number: data.bill_no || data.invoice_number || '',
+    date: data.date || data.invoice_date || '',
+    total: data.total || 0,
+    error: data.error || null,
     items: transformedItems
   };
 }
@@ -376,7 +461,7 @@ export async function parseInvoiceImage(imageFile, medicinesList = [], onProgres
   let worker = null;
   try {
     onProgress('Compressing invoice image for mobile…', 10);
-    const compressed = await compressImage(imageFile, 1280, 0.8);
+    const compressed = await compressImage(imageFile, 2000, 0.92);
 
     onProgress('Initializing OCR engine…', 25);
     worker = await createWorker('eng');
@@ -404,7 +489,16 @@ export async function parseInvoiceImage(imageFile, medicinesList = [], onProgres
  * Dispatches to parseInvoicePDF for PDFs or parseInvoiceImage for standard image formats.
  */
 export async function parseInvoiceFile(file, medicinesList = [], onProgress = () => {}) {
-  if (!file) throw new Error('No file provided for scanning');
+  if (!file) {
+    addScanLog('FAILURE', { failed_stage: 'FILE_SELECTION', error: 'No file provided' });
+    throw new Error('No file provided for scanning');
+  }
+
+  addScanLog('START_SCAN', {
+    fileName: file.name,
+    fileSize: file.size,
+    fileType: file.type || 'unknown'
+  });
 
   const isPdf = file.type === 'application/pdf' || String(file.name || '').toLowerCase().endsWith('.pdf');
   if (isPdf) {
@@ -412,9 +506,9 @@ export async function parseInvoiceFile(file, medicinesList = [], onProgress = ()
     return parseInvoicePDF(file, medicinesList, onProgress);
   }
 
-  // Regular Image Fallback Logic
+  // Regular Image Flow
   onProgress('Compressing invoice image for mobile…', 10);
-  const compressedBlob = await compressImage(file, 1280, 0.8);
+  const compressedBlob = await compressImage(file, 2000, 0.92);
   
   try {
     onProgress('✨ AI Scan (Gemini) - Processing...', 50);
@@ -425,14 +519,56 @@ export async function parseInvoiceFile(file, medicinesList = [], onProgress = ()
       reader.readAsDataURL(compressedBlob);
     });
     const parsed = await parseInvoiceViaServer(base64, medicinesList);
-    console.log(`[Invoice Scanner] engine=${parsed.engine || 'gemini-3.6-flash'} completed successfully`);
+    console.log(`[Invoice Scanner] engine=${parsed.engine || 'gemini-3.8-flash'} completed successfully`);
     onProgress('Complete!', 100);
     return parsed;
   } catch (err) {
+    const isMisconfigured = err.data?.misconfigured || 
+      err.status === 404 || 
+      err.status === 400 || 
+      err.data?.stage === 'MODEL_CONFIG_ERROR' || 
+      err.data?.stage === 'API_KEY_CHECK';
+
+    addScanLog('FAILURE', {
+      failed_stage: isMisconfigured ? 'MODEL_MISCONFIGURED' : 'AI_SCAN_ENGINE',
+      status: err.status || 'unknown',
+      error: err.message || String(err),
+      raw_error_body: JSON.stringify(err.data || {}),
+      misconfigured: isMisconfigured
+    });
+
+    if (isMisconfigured) {
+      console.error('[Invoice Scanner] Cloud model is misconfigured! Halting scan without Tesseract fallback.', err);
+      throw new Error(`Cloud scan model misconfigured (${err.message}). Offline OCR fallback disabled.`);
+    }
+
     console.warn(`[Invoice Scanner] AI engine failed (${err?.message || 'error'}), falling back to engine=tesseract (local OCR):`, err);
-    onProgress('📄 Local OCR (fallback) - Initializing...', 60);
-    const parsed = await parseInvoiceImage(compressedBlob, medicinesList, onProgress);
-    console.log('[Invoice Scanner] engine=tesseract (fallback) completed successfully');
-    return { ...parsed, engine: 'tesseract-fallback' };
+    addScanLog('FALLBACK_TESSERACT', {
+      trigger: 'cloud_failure',
+      status: err.status || 'unknown',
+      reason: err.message || 'Upstream AI error'
+    });
+    onProgress('⚠️ Cloud scan unavailable; using offline mode...', 60);
+    try {
+      const parsed = await parseInvoiceImage(compressedBlob, medicinesList, (msg, pct) => {
+        onProgress(`⚠️ Cloud scan unavailable; using offline mode - ${msg}`, pct);
+      });
+      addScanLog('PARSING', {
+        parsed_item_count: parsed.items?.length || 0,
+        engine: 'tesseract-fallback'
+      });
+      console.log('[Invoice Scanner] engine=tesseract (fallback) completed successfully');
+      return {
+        ...parsed,
+        engine: 'tesseract-fallback',
+        warning: 'Cloud scan unavailable; using offline mode'
+      };
+    } catch (localErr) {
+      addScanLog('FAILURE', {
+        failed_stage: 'LOCAL_OCR_FALLBACK',
+        error: localErr.message || String(localErr)
+      });
+      throw localErr;
+    }
   }
 }

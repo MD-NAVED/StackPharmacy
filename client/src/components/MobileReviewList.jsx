@@ -104,11 +104,11 @@ export default function MobileReviewList({ lines, setLines, setLine, medicines, 
             <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
               Total: {fmt(totalAmount)}
             </Typography>
-            {scanEngine === 'gemini' && (
+            {(scanEngine && scanEngine.includes('gemini')) && (
               <Chip size="small" label="✨ AI Scan (Gemini)" sx={{ bgcolor: '#f3e5f5', color: '#7b1fa2', fontWeight: 700, height: 22, fontSize: 10 }} />
             )}
-            {scanEngine === 'tesseract' && (
-              <Chip size="small" label="📄 Local OCR" sx={{ bgcolor: '#fff3e0', color: '#e65100', fontWeight: 600, height: 22, fontSize: 10 }} />
+            {(scanEngine && (scanEngine.includes('tesseract') || scanEngine.includes('fallback'))) && (
+              <Chip size="small" label="⚠️ Offline OCR Fallback" sx={{ bgcolor: '#fff3e0', color: '#e65100', fontWeight: 600, height: 22, fontSize: 10 }} />
             )}
           </Box>
           {(counts['needs-fix'] > 0 || counts['verify'] > 0) && (

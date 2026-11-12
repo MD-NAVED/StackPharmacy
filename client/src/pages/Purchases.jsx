@@ -25,8 +25,11 @@ import UpgradeDialog from '../components/UpgradeDialog';
 import DateRangeFilter from '../components/DateRangeFilter';
 import { fmt, fmtDate, fmtDateTime, todayStr } from '../utils';
 import { parseInvoiceFile } from '../utils/invoiceParser';
+import { shareOrDownloadScanLogs } from '../utils/scanLogger';
 
-const EMPTY_LINE = { medicine_id: null, batch_number: '', expiry_date: '', quantity: '', buy_price: '' };
+const defaultExpiry = () => `${new Date().getFullYear() + 1}-12-31`;
+const defaultBatch = () => `BATCH-${new Date().toISOString().slice(2, 10).replace(/-/g, '')}`;
+const EMPTY_LINE = { medicine_id: null, batch_number: defaultBatch(), expiry_date: defaultExpiry(), quantity: '', buy_price: '' };
 const EMPTY_HEAD = { supplier_name: '', invoice_number: '', date: '' };
 
 /** Mobile view: one card per purchase so nothing needs sideways scrolling. */
@@ -158,26 +161,57 @@ export default function Purchases({ initialLines, initialOpen, initialScannedNot
         date: parsed.date || todayStr(),
       });
 
-      if (parsed.items && parsed.items.length > 0) {
-        setLines(parsed.items.map((it) => ({
-          medicine_id: it.medicine_id || null,
-          batch_number: it.batch_number || '',
-          expiry_date: it.expiry_date || '',
-          quantity: it.quantity || '',
-          buy_price: it.buy_price || '',
-          candidates: it.candidates || [],
-          lowConfidence: it.lowConfidence || false,
-        })));
-      } else {
+      // Task 5: If scan fails or returns 0 items / unreadable_bill:
+      if (!parsed.items || parsed.items.length === 0 || parsed.error === 'unreadable_bill') {
+        setHead({
+          supplier_name: parsed?.supplier_name || '',
+          invoice_number: parsed?.invoice_number || '',
+          date: parsed?.date || todayStr(),
+        });
         setLines([{ ...EMPTY_LINE }]);
+        setScannedNotice(false);
+        setScanEngine(null);
+        setOpen(true);
+        setSnack({ severity: 'warning', message: 'Scan failed / bill unreadable — enter details manually' });
+        return;
       }
 
+      setHead({
+        supplier_name: parsed.supplier_name || '',
+        invoice_number: parsed.invoice_number || '',
+        date: parsed.date || todayStr(),
+      });
+
+      setLines(parsed.items.map((it) => ({
+        medicine_id: it.medicine_id || null,
+        batch_number: it.batch_number || defaultBatch(),
+        expiry_date: it.expiry_date || defaultExpiry(),
+        quantity: it.quantity || '',
+        buy_price: it.buy_price || '',
+        candidates: it.candidates || [],
+        lowConfidence: it.lowConfidence || false,
+      })));
+
+      const isFallback = parsed.engine && (parsed.engine.includes('fallback') || parsed.engine.includes('tesseract'));
       setScannedNotice(true);
-      setScanEngine(parsed.engine || 'tesseract');
+      setScanEngine(parsed.engine || 'gemini-3.8-flash');
       setOpen(true);
-      setSnack({ severity: 'success', message: 'Invoice scanned! Pre-filled purchase details below for review.' });
+      if (isFallback) {
+        setSnack({ severity: 'warning', message: 'Cloud scan unavailable; using offline mode. Review items carefully.' });
+      } else {
+        setSnack({ severity: 'success', message: 'Invoice scanned! Pre-filled purchase details below for review.' });
+      }
     } catch (err) {
-      setSnack({ severity: 'error', message: err.message || 'Invoice scan failed. Please enter details manually.' });
+      setHead({
+        supplier_name: '',
+        invoice_number: '',
+        date: todayStr(),
+      });
+      setLines([{ ...EMPTY_LINE }]);
+      setScannedNotice(false);
+      setScanEngine(null);
+      setOpen(true);
+      setSnack({ severity: 'warning', message: 'Scan failed / bill unreadable — enter details manually' });
     } finally {
       setScanBusy(false);
       if (cameraInputRef.current) cameraInputRef.current.value = '';
@@ -244,9 +278,6 @@ export default function Purchases({ initialLines, initialOpen, initialScannedNot
   const isLineValid = (l) => Boolean(
     l &&
     l.medicine_id &&
-    l.batch_number &&
-    l.batch_number.trim() &&
-    /^\d{4}-\d{2}-\d{2}$/.test(l.expiry_date) &&
     Number(l.quantity) > 0 &&
     Number(l.buy_price) >= 0 &&
     l.buy_price !== ''
@@ -262,7 +293,13 @@ export default function Purchases({ initialLines, initialOpen, initialScannedNot
         body: {
           supplier_name: head.supplier_name,
           invoice_number: head.invoice_number,
-          items: lines.map((l) => ({ ...l, quantity: Number(l.quantity), buy_price: Number(l.buy_price) })),
+          items: lines.map((l) => ({
+            ...l,
+            batch_number: l.batch_number?.trim() || defaultBatch(),
+            expiry_date: /^\d{4}-\d{2}-\d{2}$/.test(l.expiry_date) ? l.expiry_date : defaultExpiry(),
+            quantity: Number(l.quantity),
+            buy_price: Number(l.buy_price),
+          })),
         },
       });
       setSnack({ severity: 'success', message: `Purchase saved — stock automatically increased (total ${fmt(r.total)})` });
@@ -603,16 +640,16 @@ export default function Purchases({ initialLines, initialOpen, initialScannedNot
         <DialogTitle>New Purchase — add stock by batch</DialogTitle>
         <DialogContent sx={{ pt: '8px !important' }}>
           {scannedNotice && (
-            <Alert severity={scanEngine === 'gemini' ? 'info' : 'warning'} sx={{ mb: 2, mt: 1 }}>
-              {scanEngine === 'gemini' ? (
+            <Alert severity={(scanEngine && scanEngine.includes('gemini')) ? 'info' : 'warning'} sx={{ mb: 2, mt: 1 }}>
+              {(scanEngine && scanEngine.includes('gemini')) ? (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                   <Chip size="small" label="✨ AI Scan (Gemini)" sx={{ bgcolor: '#f3e5f5', color: '#7b1fa2', fontWeight: 700 }} />
                   <span><b>AI-Powered Extraction</b>: High-accuracy extraction complete. Please review extracted items before saving.</span>
                 </Box>
               ) : (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                  <Chip size="small" label="📄 Local OCR (Fallback)" sx={{ bgcolor: '#fff3e0', color: '#e65100', fontWeight: 700 }} />
-                  <span><b>Scanned from Invoice (Beta)</b>: Please review extracted items. Empty or low-confidence fields are highlighted in red and must be verified before saving.</span>
+                  <Chip size="small" label="⚠️ Offline OCR Fallback" sx={{ bgcolor: '#fff3e0', color: '#e65100', fontWeight: 700 }} />
+                  <span><b>Cloud scan unavailable; using offline mode</b>: Local OCR may miss small or faded text. Empty or low-confidence fields are highlighted in red and must be verified before saving.</span>
                 </Box>
               )}
             </Alert>
@@ -918,7 +955,22 @@ export default function Purchases({ initialLines, initialOpen, initialScannedNot
             <li><b>Review before saving:</b> Always verify highlighted fields (red outline) and select candidate suggestions.</li>
           </Box>
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ justifyContent: 'space-between', px: 2.5, pb: 2 }}>
+          <Button
+            size="small"
+            variant="outlined"
+            color="secondary"
+            onClick={async () => {
+              const res = await shareOrDownloadScanLogs();
+              if (res.success) {
+                setSnack({ severity: 'info', message: res.method === 'share' ? 'Debug log shared' : 'Debug log downloaded' });
+              } else if (res.error) {
+                setSnack({ severity: 'error', message: 'Failed to export log: ' + res.error });
+              }
+            }}
+          >
+            📋 Share / Download Debug Log
+          </Button>
           <Button onClick={() => setInfoOpen(false)} variant="contained">Got it</Button>
         </DialogActions>
       </Dialog>

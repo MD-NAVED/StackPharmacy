@@ -1,6 +1,7 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import { createWorker } from 'tesseract.js';
 import { parseInvoiceText, parseInvoiceViaServer } from './invoiceParser.js';
+import { addScanLog } from './scanLogger.js';
 
 export const PINNED_PDFJS_VERSION = '4.10.38';
 
@@ -167,8 +168,19 @@ export async function parseInvoicePDF(
           const pageParsed = await parseInvoiceViaServer(base64, medicinesList);
           pageTexts.push(pageParsed); // store the parsed result
         } catch (geminiErr) {
+          addScanLog('FAILURE', {
+            failed_stage: 'PDF_PAGE_AI_SCAN',
+            page: i,
+            status: geminiErr.status || 'unknown',
+            error: geminiErr.message || String(geminiErr),
+            raw_error_body: JSON.stringify(geminiErr.data || {})
+          });
+          addScanLog('FALLBACK_TESSERACT', {
+            reason: geminiErr.message || 'AI failed for PDF page',
+            page: i
+          });
           console.warn('Gemini failed for PDF page, falling back to Tesseract...', geminiErr);
-          onProgress(`📄 Local OCR (fallback) page ${i} of ${pdf.numPages}…`, scanPct, {
+          onProgress(`⚠️ Cloud scan unavailable; using offline mode page ${i} of ${pdf.numPages}…`, scanPct, {
              page: i, totalPages: pdf.numPages, stage: 'scanning', thumbnails
           });
           if (!worker) worker = await createWorker('eng');

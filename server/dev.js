@@ -20,6 +20,8 @@ const ENV_KEYS = [
   'UPSTASH_REDIS_REST_TOKEN',
   'SENTRY_DSN',
   'CRON_SECRET',
+  'GEMINI_API_KEY',
+  'GEMINI_MODEL',
 ];
 function readDotEnv() {
   const values = {};
@@ -29,7 +31,9 @@ function readDotEnv() {
   for (const line of fs.readFileSync(envPath, 'utf8').split(/\r?\n/)) {
     const t = line.trim();
     for (const k of ENV_KEYS) {
-      if (t.startsWith(k + '=')) values[k] = t.slice(k.length + 1);
+      if (t.startsWith(k + '=')) {
+        values[k] = t.slice(k.length + 1).trim().replace(/^['"]|['"]$/g, '');
+      }
     }
   }
   return values;
@@ -55,10 +59,13 @@ if (fs.existsSync(dist)) {
 }
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log('');
   console.log('  💊 MediStock is running!');
   console.log(`  ➜  Open http://localhost:${PORT} in your browser`);
   console.log('  ➜  Demo logins ->  owner / owner123   |   staff / staff123');
   console.log('');
+  if (typeof app.verifyGeminiModelHealth === 'function') {
+    await app.verifyGeminiModelHealth();
+  }
 });

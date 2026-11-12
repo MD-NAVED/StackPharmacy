@@ -1,6 +1,6 @@
 {
   "name": "medistock",
-  "version": "1.0.0",
+  "version": "1.4.7",
   "private": true,
   "description": "MediStock - Pharmacy Billing & Inventory Management System",
   "scripts": {
@@ -13,7 +13,8 @@
     "test": "node scripts/test-purchases-render.js && node scripts/local-test.js",
     "test:render": "node scripts/test-purchases-render.js",
     "build:client": "cd client && npm run build",
-    "build:capacitor": "cd client && npm run build:capacitor"
+    "build:capacitor": "cd client && npm run build:capacitor",
+    "screenshots": "node scripts/capture-all-screenshots.js"
   },
   "dependencies": {
     "@sentry/node": "^10.74.0",
@@ -28,6 +29,7 @@
   },
   "devDependencies": {
     "embedded-postgres": "^18.4.0-beta.17",
-    "postgres-migrations": "^5.3.0"
+    "postgres-migrations": "^5.3.0",
+    "puppeteer-core": "^25.13.0"
   }
 }
