@@ -65,15 +65,15 @@ async function run() {
     // Verify Title set by useEffect
     const title = await page.title();
     console.log('Page Title:', title);
-    if (!title.includes('TrackPharmacy') || !title.includes('Smart Stock')) {
-      throw new Error(`Expected title with TrackPharmacy and tagline, but got: "${title}"`);
+    if (!title.includes('PharmacyTrack') || !title.includes('Smart Stock')) {
+      throw new Error(`Expected title with PharmacyTrack and tagline, but got: "${title}"`);
     }
 
     // Verify key texts rendered on page
     const pageText = await page.evaluate(() => document.body.innerText);
 
     const checks = [
-      'TrackPharmacy',
+      'PharmacyTrack',
       'First month free. Then ₹299 per month.',
       'Take a photo. Your stock updates itself.',
       'Save hours of typing every week.',

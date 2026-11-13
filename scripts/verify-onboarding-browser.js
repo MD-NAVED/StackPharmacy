@@ -58,8 +58,8 @@ async function run() {
 
     const title = await page.title();
     console.log('Page Title:', title);
-    if (!title.includes('TrackPharmacy')) {
-      throw new Error(`Expected title to include "TrackPharmacy", but got "${title}"`);
+    if (!title.includes('PharmacyTrack')) {
+      throw new Error(`Expected title to include "PharmacyTrack", but got "${title}"`);
     }
 
     // Verify full HTML content includes all accordion details even if collapsed
@@ -73,7 +73,7 @@ async function run() {
     const pageText = await page.evaluate(() => document.body.innerText);
 
     const checks = [
-      'What is TrackPharmacy?',
+      'What is PharmacyTrack?',
       'Save time on data entry',
       'Know expiry dates before they cost you money',
       'See low stock before your customers do',

@@ -65,15 +65,15 @@ async function run() {
     // Verify Title set by useEffect
     const title = await page.title();
     console.log('Page Title:', title);
-    if (!title.includes('TrackPharmacy') || !title.includes('Privacy Policy')) {
-      throw new Error(`Expected title with TrackPharmacy and Privacy Policy, but got: "${title}"`);
+    if (!title.includes('PharmacyTrack') || !title.includes('Privacy Policy')) {
+      throw new Error(`Expected title with PharmacyTrack and Privacy Policy, but got: "${title}"`);
     }
 
     // Verify key texts rendered on page
     const pageText = await page.evaluate(() => document.body.innerText);
 
     const checks = [
-      'TrackPharmacy',
+      'PharmacyTrack',
       'Version 1.0',
       'Effective date: November 13, 2026',
       'Privacy Policy',

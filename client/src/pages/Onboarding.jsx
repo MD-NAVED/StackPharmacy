@@ -126,7 +126,7 @@ export default function Onboarding() {
 
       <Container maxWidth="sm" sx={{ px: { xs: 2, sm: 3 }, pt: 3 }}>
 
-        {/* SECTION 1: WHAT IS TRACKPHARMACY */}
+        {/* SECTION 1: WHAT IS PHARMACYTRACK */}
         <Box component="section" sx={{ mb: 5 }}>
           {/* Tagline Badge */}
           <Chip

@@ -77,7 +77,7 @@ const cleanHtml = html.replace(/<!--.*?-->/g, '');
 console.log('  PASS: Onboarding component rendered cleanly (' + html.length + ' bytes HTML output)\\n');
 
 // Section 1 Tests
-console.log('=== TEST 2: Section 1 — "What is TrackPharmacy" ===');
+console.log('=== TEST 2: Section 1 — "What is PharmacyTrack" ===');
 assert(cleanHtml.includes('What is ' + branding.BRAND_NAME + '?'), 'Must include header "What is ' + branding.BRAND_NAME + '?"');
 assert(cleanHtml.includes('Save time on data entry'), 'Must include benefit "Save time on data entry"');
 assert(cleanHtml.includes('Know expiry dates before they cost you money'), 'Must include benefit "Know expiry dates before they cost you money"');
