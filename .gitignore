@@ -24,6 +24,9 @@ Thumbs.db
 .DS_Store
 *.txt
 
+# Screenshots & probe captures
+screenshots/
+
 # Logs
 *.log
 *.mp4

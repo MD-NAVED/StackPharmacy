@@ -39,7 +39,7 @@ export default function AppLayout() {
   }, [location.pathname]);
 
   const nav = [
-    { label: 'Dashboard', icon: <SpaceDashboardIcon />, to: '/' },
+    { label: 'Dashboard', icon: <SpaceDashboardIcon />, to: '/dashboard' },
     { label: 'Billing (New Sale)', icon: <PointOfSaleIcon />, to: '/billing' },
     { label: 'Credit Book (Khata)', icon: <MenuBookIcon />, to: '/khata' },
     { label: 'Medicines', icon: <MedicationIcon />, to: '/medicines' },

@@ -30,7 +30,7 @@ export default function Login() {
     try {
       const data = await api('/api/auth/login', { method: 'POST', body: { username, password } });
       login(data.token, data.user);
-      navigate('/');
+      navigate('/dashboard');
     } catch (err) {
       setError(err.message);
     } finally {

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
 import * as Sentry from '@sentry/react';
 import { api } from './api';

@@ -18,6 +18,9 @@ import Companies from './pages/Companies';
 import InvoiceView from './pages/InvoiceView';
 import Subscription from './pages/Subscription';
 import Referrals from './pages/Referrals';
+import Onboarding from './pages/Onboarding';
+import Landing from './pages/Landing';
+import Privacy from './pages/Privacy';
 
 export default function App() {
   return (
@@ -26,23 +29,27 @@ export default function App() {
       <BrowserRouter>
         <AuthProvider>
           <Routes>
+            <Route path="/" element={<Landing />} />
+            <Route path="/onboarding" element={<Onboarding />} />
+            <Route path="/privacy" element={<Privacy />} />
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<SignUp />} />
             <Route path="/invoice/:id" element={<InvoiceView />} />
             <Route element={<RequireAuth />}>
-              <Route path="/" element={<AppLayout />}>
-                <Route index element={<Dashboard />} />
-                    <Route path="billing" element={<Billing />} />
-                    <Route path="khata" element={<Khata />} />
-                <Route path="medicines" element={<Medicines />} />
-                <Route path="companies" element={<Companies />} />
-                <Route path="purchases" element={<Purchases />} />
-                <Route path="alerts" element={<Alerts />} />
-                <Route path="reports" element={<Reports />} />
-                <Route path="settings" element={<Settings />} />
-                <Route path="subscription" element={<Subscription />} />
-                <Route path="referrals" element={<Referrals />} />
-                <Route path="*" element={<Navigate to="/" replace />} />
+              <Route element={<AppLayout />}>
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/billing" element={<Billing />} />
+                <Route path="/khata" element={<Khata />} />
+                <Route path="/medicines" element={<Medicines />} />
+                <Route path="/companies" element={<Companies />} />
+                <Route path="/purchases" element={<Purchases />} />
+                <Route path="/alerts" element={<Alerts />} />
+                <Route path="/reports" element={<Reports />} />
+                <Route path="/settings" element={<Settings />} />
+                <Route path="/subscription" element={<Subscription />} />
+                <Route path="/referrals" element={<Referrals />} />
+                <Route path="/app" element={<Navigate to="/dashboard" replace />} />
+                <Route path="*" element={<Navigate to="/dashboard" replace />} />
               </Route>
             </Route>
           </Routes>
