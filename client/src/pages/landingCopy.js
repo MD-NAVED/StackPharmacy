@@ -73,7 +73,7 @@ export const PRICING_COPY = {
   title: 'Simple, honest pricing',
   subtitle: 'Clear pricing for every pharmacy owner. No surprises.',
   firstMonth: 'First month — Free',
-  monthlyRate: `Then ${PRICING_MONTHLY} per month`,
+  monthlyRate: PRICING_MONTHLY.includes('per month') ? `Then ${PRICING_MONTHLY}` : `Then ${PRICING_MONTHLY} per month`,
   guarantee: 'No hidden fees. Cancel anytime.',
   bullets: [
     'Unlimited purchase bill scans',

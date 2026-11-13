@@ -1,6 +1,6 @@
 {
-  "appId": "com.medistock.app",
-  "appName": "MediStock",
+  "appId": "com.trackpharmacy.app",
+  "appName": "TrackPharmacy",
   "webDir": "dist",
   "plugins": {
     "SplashScreen": {

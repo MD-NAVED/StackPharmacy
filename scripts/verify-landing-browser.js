@@ -74,7 +74,7 @@ async function run() {
 
     const checks = [
       'PharmacyTrack',
-      'First month free. Then ₹299 per month.',
+      'First month free. Then ₹599 per month.',
       'Take a photo. Your stock updates itself.',
       'Save hours of typing every week.',
       'Start Free Trial',
@@ -88,7 +88,7 @@ async function run() {
       'Help on WhatsApp, in your language',
       'Simple, honest pricing',
       'First month — Free',
-      'Then ₹299 per month',
+      'Then ₹599 per month',
       'No hidden fees. Cancel anytime.',
       'Unlimited purchase bill scans',
       'Start Your Free Month',

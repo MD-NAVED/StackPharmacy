@@ -106,7 +106,7 @@ console.log('  PASS: All 3 feature cards verified');
 // Section 4 Tests (Honest Pricing)
 console.log('\\n=== TEST 5: Section 4 — Honest Pricing ===');
 assert(cleanHtml.includes('First month — Free'), 'Must state First month — Free');
-assert(cleanHtml.includes('Then ₹299 per month'), 'Must state Then ₹299 per month');
+assert(cleanHtml.includes('Then ₹599 per month'), 'Must state Then ₹599 per month');
 assert(cleanHtml.includes('No hidden fees. Cancel anytime.'), 'Must state guarantee');
 assert(cleanHtml.includes('Start Your Free Month'), 'Must include pricing card CTA');
 

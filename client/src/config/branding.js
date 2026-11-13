@@ -8,8 +8,10 @@ export const BRAND_NAME = 'PharmacyTrack';
 export const BRAND_TAGLINE = 'Smart Stock & Expiry Management for Chemist Stores';
 export const BRAND_SHORT_DESC = 'The simple phone app for Indian pharmacy owners to scan purchase bills, update stock in seconds, and get expiry alerts.';
 
-export const PRICING_MONTHLY = '₹299';
-export const PRICING_SUMMARY = 'First month free. Then ₹299 per month.';
+export const PRICING_PLAN_NAME = 'Pro';
+export const PRICING_MONTHLY = '₹599 per month';
+export const PRICING_SUMMARY = 'First month free. Then ₹599 per month.';
+export const PRICING_ANNUAL = '₹4,999 per year';
 
 // Official support WhatsApp contact for customer onboarding assistance
 export const SUPPORT_WHATSAPP_NUMBER =

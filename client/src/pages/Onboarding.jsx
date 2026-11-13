@@ -724,7 +724,7 @@ export default function Onboarding() {
               </AccordionSummary>
               <AccordionDetails sx={{ px: 2, pt: 0, pb: 2 }}>
                 <Typography sx={{ color: '#475569', fontSize: '0.9rem', lineHeight: 1.6 }}>
-                  Your first month is completely free with all features included. After that, it costs {PRICING_MONTHLY} per month with no hidden fees and you can stop anytime.
+                  Your first month is completely free with all features included. After that, it costs {PRICING_MONTHLY.includes('per month') ? PRICING_MONTHLY : `${PRICING_MONTHLY} per month`} with no hidden fees and you can stop anytime.
                 </Typography>
               </AccordionDetails>
             </Accordion>
@@ -839,7 +839,7 @@ export default function Onboarding() {
                 Start free — first month free
               </Typography>
               <Typography variant="caption" sx={{ color: '#64748B', display: 'block', fontSize: '0.74rem' }}>
-                Then {PRICING_MONTHLY} per month • Cancel anytime
+                {PRICING_MONTHLY.includes('per month') ? `Then ${PRICING_MONTHLY}` : `Then ${PRICING_MONTHLY} per month`} • Cancel anytime
               </Typography>
             </Box>
 

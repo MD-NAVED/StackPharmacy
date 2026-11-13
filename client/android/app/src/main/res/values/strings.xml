@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">MediStock</string>
-    <string name="title_activity_main">MediStock</string>
-    <string name="package_name">com.medistock.app</string>
-    <string name="custom_url_scheme">com.medistock.app</string>
+    <string name="app_name">TrackPharmacy</string>
+    <string name="title_activity_main">TrackPharmacy</string>
+    <string name="package_name">com.trackpharmacy.app</string>
+    <string name="custom_url_scheme">com.trackpharmacy.app</string>
 </resources>

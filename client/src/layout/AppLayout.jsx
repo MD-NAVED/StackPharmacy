@@ -21,6 +21,7 @@ import CardGiftcardIcon from '@mui/icons-material/CardGiftcard';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import { getTrialDaysRemaining } from '../tiers';
+import { BRAND_NAME } from '../config/branding';
 
 const DRAWER_WIDTH = 248;
 
@@ -101,7 +102,7 @@ export default function AppLayout() {
           </IconButton>
           <LocalPharmacyIcon sx={{ display: { xs: 'none', sm: 'block' }, color: 'primary.main', mr: 1 }} />
           <Typography variant="h6" sx={{ flex: '1 1 0', minWidth: 0, mr: 1, fontSize: { xs: 16, sm: 20 }, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {storeName || 'MediStock'}
+            {storeName || BRAND_NAME}
           </Typography>
           {trialDaysLeft !== null && (
             <Chip

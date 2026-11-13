@@ -20,10 +20,8 @@ import { api } from '../api';
 import { fmt, fmtDate, fmtDateTime } from '../utils';
 
 const COMMISSION_TABLE = [
-  { plan: 'Starter Yearly (₹2,999)', commission: '₹450', freeMonths: '+1 Month Free' },
+  { plan: 'Pro Monthly (₹599)', commission: '₹90', freeMonths: 'Standard Commission' },
   { plan: 'Pro Yearly — Best Value (₹4,999)', commission: '₹750', freeMonths: '+2 Months Free', highlight: true },
-  { plan: 'Elite Yearly (₹7,999)', commission: '₹1,200', freeMonths: '+3 Months Free' },
-  { plan: 'Founder Pack — 3 Years (₹14,999)', commission: '₹2,250', freeMonths: '+6 Months Free' },
 ];
 
 export default function Referrals() {

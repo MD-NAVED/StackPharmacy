@@ -336,13 +336,9 @@ function ensureSchema() {
         await pool.query("UPDATE users SET platform_admin = 1 WHERE role = 'owner' AND store_id = $1", [tid]);
       }
 
-      // Feature-tier pricing ladder (Starter / Pro / Elite). Backfill: active
-      // trials get Elite (the trial is the full experience), paid legacy plans
-      // map to their closest tier.
-      await pool.query("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS tier VARCHAR(20) NOT NULL DEFAULT 'starter'");
-      await pool.query("UPDATE tenants SET tier = 'elite' WHERE plan = 'lifetime' AND tier = 'starter'");
-      await pool.query("UPDATE tenants SET tier = 'pro' WHERE plan IN ('monthly', 'yearly') AND tier = 'starter'");
-      await pool.query("UPDATE tenants SET tier = 'elite' WHERE status = 'trial' AND tier = 'starter'");
+      // Unified Pro Plan Model (₹599/mo) — all tenants run on Pro with all features unlocked
+      await pool.query("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS tier VARCHAR(20) NOT NULL DEFAULT 'pro'");
+      await pool.query("UPDATE tenants SET tier = 'pro'");
 
       // Refer & Earn ecosystem columns & ledger
       await pool.query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS referral_code VARCHAR(50)');
@@ -413,30 +409,26 @@ function requireAuth(req, res, next) {
                    trialEndsAt: row.trial_ends_at, subscriptionEndsAt: row.subscription_ends_at };
       req.storeId = row.store_id;
       req.token = token;
-      // Feature tier reflects the store's actual subscription plan.
-      req.tier = row.tenant_tier || 'starter';
+      // Feature tier reflects the store's plan: all stores operate on Pro (all features unlocked)
+      req.tier = 'pro';
 
       if (Sentry && process.env.SENTRY_DSN) {
         Sentry.setUser({ id: String(row.id), username: row.username });
         Sentry.setTags({
           store_id: String(row.store_id || ''),
           role: row.role,
-          tier: req.tier,
+          tier: 'pro',
         });
       }
-      // Kill-switch & trial enforcement: a suspended/expired store stops
-      // working everywhere EXCEPT auth and billing, so the paywall itself
-      // stays reachable and a renewal can unlock the store again.
+      // Kill-switch: only a store explicitly suspended by the platform admin is blocked.
+      // Day 31+ trial expiration NEVER locks store data. Everything keeps working.
       const openPath = req.path.startsWith('/api/auth') || req.path.startsWith('/api/billing');
       if (!openPath && !row.platform_admin && row.store_id) {
-        const nowMs = Date.now();
         const st = row.tenant_status;
-        const trialOver = st === 'trial' && row.trial_ends_at && new Date(row.trial_ends_at).getTime() < nowMs;
-        const subOver = st === 'active' && row.subscription_ends_at && new Date(row.subscription_ends_at).getTime() < nowMs;
-        if (st === 'suspended' || st === 'expired' || trialOver || subOver) {
+        if (st === 'suspended') {
           return res.status(403).json({
-            error: 'Store locked — your trial has ended or payment is pending. Renew to unlock instantly.',
-            code: 'subscription_locked',
+            error: 'Store suspended by administrator. Contact support to resolve.',
+            code: 'store_suspended',
           });
         }
       }
@@ -457,33 +449,27 @@ function requirePlatformAdmin(req, res, next) {
 }
 
 // ---------------------------------------------------------------------------
-// Feature tiers (the pricing ladder). Gating lives HERE on the server — hiding
-// a button in the app UI is only cosmetic and is never the security boundary.
+// Unified Pro Plan Model (₹599/mo) — All features unlocked for all accounts.
+// AI Invoice Scanner, Khata, WhatsApp bills, Excel import, reports, and unlimited staff
+// are fully unlocked with zero feature gating.
 // ---------------------------------------------------------------------------
-const TIER_RANK = { starter: 0, pro: 1, elite: 2 };
+const TIER_RANK = { starter: 1, pro: 1, elite: 1 };
 const FEATURE_MIN_TIER = {
-  khata: 'pro',             // udhaar book writes (reads stay open for everyone)
-  whatsapp_bill: 'pro',     // WhatsApp bill sharing after checkout
-  import: 'pro',            // Excel/CSV import wizard
-  reports: 'pro',           // full sales/purchase reports
-  staff_unlimited: 'elite', // Starter = 3 staff (4 total), Pro = 5 staff (6 total), Elite = Unlimited
-  scanner: 'elite',         // camera invoice scanner
-  whatsapp_summary: 'elite' // daily WhatsApp business summary
+  khata: 'pro',
+  whatsapp_bill: 'pro',
+  import: 'pro',
+  reports: 'pro',
+  staff_unlimited: 'pro',
+  scanner: 'pro',
+  whatsapp_summary: 'pro'
 };
 function tierAllows(tier, feature) {
-  const need = FEATURE_MIN_TIER[feature];
-  if (!need) return true;
-  return (TIER_RANK[tier] ?? 0) >= TIER_RANK[need];
+  // All features unlocked unconditionally for all accounts
+  return true;
 }
 function requireFeature(feature) {
-  return (req, res, next) => {
-    if (req.user.platformAdmin || tierAllows(req.tier, feature)) return next();
-    const need = FEATURE_MIN_TIER[feature];
-    res.status(402).json({
-      error: 'This feature is not part of your current plan. Upgrade on the Subscription page to unlock it.',
-      code: 'feature_locked', feature, required_tier: need,
-    });
-  };
+  // Pass-through middleware: all features unlocked
+  return (req, res, next) => next();
 }
 
 // ---------------------------------------------------------------------------
@@ -521,22 +507,22 @@ app.post('/api/auth/signup', async (req, res, next) => {
       return bad(res, 409, 'That username is already taken');
     }
 
-    // Optional referral code: if valid, grant bonus 7 days (28-day trial) and link referrer
+    // Optional referral code: if valid, grant bonus 7 days and link referrer
     const refCode = String(referral_code || '').trim().toUpperCase();
     let referrerTenantId = null;
-    let trialDays = 21; // Baseline trial is 21 days
+    let trialDays = 30; // 30 days full access free trial
     if (refCode) {
       const refRow = (await pool.query('SELECT id FROM tenants WHERE UPPER(referral_code) = $1', [refCode])).rows[0];
       if (refRow) {
         referrerTenantId = refRow.id;
-        trialDays = 28; // Bonus 7 days for using referral code (28 days)!
+        trialDays = 37; // Bonus 7 days for using referral code (37 days)!
       }
     }
 
-    // 1. Create the store (tenant) with trial (21 days, or 28 with referral).
+    // 1. Create the store (tenant) with trial (30 days, or 37 with referral) on Pro tier.
     const tenantRes = (await pool.query(
       `INSERT INTO tenants (store_name, owner_name, phone, plan, status, tier, trial_ends_at, referred_by_tenant_id)
-       VALUES ($1, $2, $3, 'trial', 'trial', 'elite', now() + make_interval(days => $4::int), $5)
+       VALUES ($1, $2, $3, 'trial', 'trial', 'pro', now() + make_interval(days => $4::int), $5)
        RETURNING id, trial_ends_at, status, plan, tier`,
       [String(store_name).trim().slice(0, 200), String(name).trim().slice(0, 200), String(phone || '').trim().slice(0, 30), trialDays, referrerTenantId]
     )).rows[0];
@@ -568,7 +554,7 @@ app.post('/api/auth/signup', async (req, res, next) => {
         name: String(name).trim(),
         role: 'owner',
         store_id: tid,
-        tier: 'elite',
+        tier: 'pro',
         tenantStatus: tenantRes.status,
         tenantPlan: tenantRes.plan,
         trialEndsAt: tenantRes.trial_ends_at,
@@ -605,21 +591,16 @@ app.post('/api/auth/login', loginIpLimiter, async (req, res, next) => {
 
     // Kill-switch & trial enforcement at the front door: a suspended or
     // expired store cannot even log in (renewal re-opens it instantly).
-    let loginTier = 'starter';
+    let loginTier = 'pro';
     let tenantRow = null;
     if (u.store_id) {
       tenantRow = (await pool.query('SELECT status, plan, tier, trial_ends_at, subscription_ends_at FROM tenants WHERE id = $1', [u.store_id])).rows[0];
-      if (tenantRow) loginTier = tenantRow.tier || 'starter';
-      if (tenantRow) {
-        const nowMs = Date.now();
-        const trialOver = tenantRow.status === 'trial' && tenantRow.trial_ends_at && new Date(tenantRow.trial_ends_at).getTime() < nowMs;
-        const subOver = tenantRow.status === 'active' && tenantRow.subscription_ends_at && new Date(tenantRow.subscription_ends_at).getTime() < nowMs;
-        if (tenantRow.status === 'suspended' || tenantRow.status === 'expired' || trialOver || subOver) {
-          return res.status(403).json({
-            error: 'Your store account is locked — trial ended or payment pending. Contact MediStock support to renew.',
-            code: 'subscription_locked',
-          });
-        }
+      loginTier = 'pro';
+      if (tenantRow && tenantRow.status === 'suspended') {
+        return res.status(403).json({
+          error: 'Your store account is suspended. Contact support for help.',
+          code: 'store_suspended',
+        });
       }
     }
 
@@ -2361,22 +2342,7 @@ app.post('/api/users', requireAuth, requireOwner, async (req, res, next) => {
     if (!username?.trim() || !password || !name?.trim()) return bad(res, 400, 'Name, username and password are required');
     if (String(password).length < 5) return bad(res, 400, 'Password must be at least 5 characters');
     if (!['owner', 'employee'].includes(role)) return bad(res, 400, 'Invalid role');
-    // Staff limits: Starter = 3 staff (4 accounts total), Pro = 5 staff (6 accounts total), Elite = Unlimited.
-    // Existing accounts from a higher plan keep working — only new additions are blocked.
-    const STAFF_ACCOUNT_LIMIT = { starter: 4, pro: 6 };
-    const limit = STAFF_ACCOUNT_LIMIT[req.tier];
-    if (limit) {
-      const c = (await pool.query('SELECT COUNT(*)::int AS c FROM users WHERE store_id = $1 AND active = 1', [req.storeId])).rows[0].c;
-      if (c >= limit) {
-        const staffCount = limit - 1;
-        const nextTier = req.tier === 'starter' ? 'Pro (5 staff)' : 'Elite (Unlimited staff)';
-        const reqTier = req.tier === 'starter' ? 'pro' : 'elite';
-        return res.status(402).json({
-          error: `Your current ${req.tier.toUpperCase()} plan allows up to ${staffCount} staff accounts. Upgrade to ${nextTier} to add more staff logins.`,
-          code: 'feature_locked', feature: 'staff_unlimited', required_tier: reqTier,
-        });
-      }
-    }
+    // Staff accounts: In the single Pro plan model, all stores have unlimited staff logins.
     await addUser(String(username).trim(), String(password), String(name).trim(), role, req.storeId);
     res.json({ ok: true });
   } catch (e) {
@@ -3085,35 +3051,38 @@ function getRazorpay() {
 }
 
 // Public plan catalog (used by both the client paywall and the founder panel).
-// Plans are <tier>-<cycle>; `tier` decides the feature set, the cycle decides
-// the billing duration.
+// Single Pro Plan Model: ₹599 monthly, ₹4,999 annual.
+// Legacy SKUs are preserved for backward compatibility and payment history lookups.
 const BILLING_PLANS = {
-  'starter-monthly': { tier: 'starter', label: 'Starter — Monthly', amount: 29900, months: 1, price_per_month: 299.0, tagline: 'Billing, stock & expiry alerts' },
-  'starter-yearly': { tier: 'starter', label: 'Starter — Yearly', amount: 299900, months: 12, price_per_month: 250.0, tagline: '2 months free vs monthly' },
-  'pro-monthly': { tier: 'pro', label: 'Pro — Monthly', amount: 59900, months: 1, price_per_month: 599.0, tagline: 'Khata, WhatsApp bills, full reports' },
-  'pro-yearly': { tier: 'pro', label: 'Pro — Yearly (Best Value)', amount: 499900, months: 12, price_per_month: 416.0, tagline: '2 months free + priority support' },
-  'elite-monthly': { tier: 'elite', label: 'Elite — Monthly', amount: 99900, months: 1, price_per_month: 999.0, tagline: 'Scanner + WhatsApp daily summary' },
-  'elite-yearly': { tier: 'elite', label: 'Elite — Yearly', amount: 799900, months: 12, price_per_month: 666.0, tagline: 'Full power at the best Elite price' },
-  'elite-3yr': { tier: 'elite', label: 'Founder Pack — 3 Years', amount: 1499900, months: 36, price_per_month: 416.0, tagline: 'Launch offer: 3 years of Elite (Save ₹9,000)' },
-  // Gated QA test SKU: never exposed on public paywall; accessible only by platform admin payment links
-  'test-1': { tier: 'starter', label: 'Founder Smoke Test — ₹1', amount: 100, months: 1, price_per_month: 1.0, tagline: 'Internal verification only' },
+  // Active Customer-Facing Plans
+  'pro-monthly': { tier: 'pro', label: 'Pro — Monthly', amount: 59900, months: 1, price_per_month: 599.0, tagline: 'All features included — AI scan, Khata, WhatsApp bills' },
+  'pro-yearly': { tier: 'pro', label: 'Pro — Yearly (Best Value)', amount: 499900, months: 12, price_per_month: 416.0, tagline: 'Save 30% — ₹4,999/year (all features included)' },
+
+  // Preserved SKU definitions for historical ledger/webhook lookups & migrations (all map to Pro tier)
+  'starter-monthly': { tier: 'pro', label: 'Pro — Monthly', amount: 29900, months: 1, price_per_month: 299.0, tagline: 'Legacy Starter (mapped to Pro)' },
+  'starter-yearly': { tier: 'pro', label: 'Pro — Yearly', amount: 299900, months: 12, price_per_month: 250.0, tagline: 'Legacy Starter Yearly (mapped to Pro)' },
+  'elite-monthly': { tier: 'pro', label: 'Pro — Monthly', amount: 99900, months: 1, price_per_month: 999.0, tagline: 'Legacy Elite (mapped to Pro)' },
+  'elite-yearly': { tier: 'pro', label: 'Pro — Yearly', amount: 799900, months: 12, price_per_month: 666.0, tagline: 'Legacy Elite Yearly (mapped to Pro)' },
+  'elite-3yr': { tier: 'pro', label: 'Founder Pack — 3 Years', amount: 1499900, months: 36, price_per_month: 416.0, tagline: 'Founder Pack (mapped to Pro)' },
+  'test-1': { tier: 'pro', label: 'Founder Smoke Test — ₹1', amount: 100, months: 1, price_per_month: 1.0, tagline: 'Internal verification only' },
 };
-// Legacy plan ids sent by older app builds already in the field map onto the
-// closest new SKU so those clients keep renewing correctly.
-const PLAN_ALIASES = { monthly: 'pro-monthly', yearly: 'pro-yearly', lifetime: 'elite-3yr', starter: 'starter-monthly' };
+// Legacy plan ids sent by older app builds already in the field map onto the Pro SKU
+const PLAN_ALIASES = { monthly: 'pro-monthly', yearly: 'pro-yearly', lifetime: 'pro-yearly', starter: 'pro-monthly', elite: 'pro-monthly' };
 function resolvePlanId(raw) {
   const id = String(raw || '').trim();
   return BILLING_PLANS[id] ? id : (PLAN_ALIASES[id] || null);
 }
 
 app.get('/api/billing/plans', (req, res) => {
-  // Filter out internal test plans from the public customer paywall
-  const publicPlans = Object.entries(BILLING_PLANS)
-    .filter(([id]) => id !== 'test-1')
-    .map(([id, p]) => ({
-      id, tier: p.tier, label: p.label, amount: p.amount, months: p.months,
+  // Only public customer-facing plans: Pro Monthly (₹599) and Pro Yearly (₹4,999)
+  const publicIds = ['pro-monthly', 'pro-yearly'];
+  const publicPlans = publicIds.map((id) => {
+    const p = BILLING_PLANS[id];
+    return {
+      id, tier: 'pro', label: p.label, amount: p.amount, months: p.months,
       price_per_month: p.price_per_month, tagline: p.tagline,
-    }));
+    };
+  });
   res.json({
     plans: publicPlans,
     gateway: getRazorpay() ? 'razorpay' : 'not_configured',
@@ -3168,7 +3137,7 @@ async function activateTenantSubscription(tenantId, months, tier, pricePerMonth,
     `UPDATE tenants t
      SET status = 'active',
          plan = CASE WHEN $2::int >= 36 THEN 'lifetime' WHEN $2::int >= 12 THEN 'yearly' ELSE 'monthly' END,
-         tier = COALESCE($4, t.tier),
+         tier = 'pro',
          price_per_month = $3,
          subscription_ends_at = GREATEST(t.subscription_ends_at, now()) + make_interval(months => $2::int)
      WHERE t.id = $1
