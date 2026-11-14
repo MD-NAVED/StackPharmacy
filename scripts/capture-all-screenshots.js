@@ -150,16 +150,11 @@ async function saveScreenshot(page, filename, description) {
     await saveScreenshot(page, '11_Settings_Import_Wizard.png', 'Marg ERP & Excel Migration Importer');
 
     // 12. SUBSCRIPTION & BILLING PLANS
-    console.log('\n[12/13] Subscription Plans...');
+    console.log('\n[12/12] Subscription Plans...');
     await page.goto(`${BASE_URL}/subscription`, { waitUntil: 'networkidle2', timeout: 30000 });
-    await saveScreenshot(page, '12_Subscription_Plans.png', 'Starter, Pro, Elite & Founder Pack');
+    await saveScreenshot(page, '12_Subscription_Plans.png', 'Pro Plan Subscription');
 
-    // 13. REFERRALS & REWARDS
-    console.log('\n[13/13] Referrals Program...');
-    await page.goto(`${BASE_URL}/referrals`, { waitUntil: 'networkidle2', timeout: 30000 });
-    await saveScreenshot(page, '13_Referrals_Program.png', 'Chemist Referral Code & Wallet Earnings');
-
-    console.log('\n🎉 ALL 13 SCREENSHOTS CAPTURED SUCCESSFULLY!');
+    console.log('\n🎉 ALL 12 SCREENSHOTS CAPTURED SUCCESSFULLY!');
     console.log(`📁 Saved in repo   : ${ROOT_OUT_DIR}`);
     console.log(`📁 Saved on Desktop: ${DESKTOP_OUT_DIR}`);
 

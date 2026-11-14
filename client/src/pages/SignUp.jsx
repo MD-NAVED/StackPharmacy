@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box, Card, CardContent, Typography, TextField, Button, InputAdornment,
-  Avatar, Alert, IconButton, Chip,
+  Avatar, Alert, IconButton,
 } from '@mui/material';
 import LocalPharmacyIcon from '@mui/icons-material/LocalPharmacy';
 import StorefrontIcon from '@mui/icons-material/Storefront';
@@ -10,44 +10,29 @@ import PersonIcon from '@mui/icons-material/Person';
 import PhoneIcon from '@mui/icons-material/Phone';
 import LockIcon from '@mui/icons-material/Lock';
 import LoginIcon from '@mui/icons-material/Login';
-import CardGiftcardIcon from '@mui/icons-material/CardGiftcard';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import { api } from '../api';
 import { useAuth } from '../auth';
+import { BRAND_NAME } from '../config/branding';
 
 /**
  * Self-service store registration — anyone can register a NEW pharmacy and
  * get their own fully isolated store space (own medicines, bills, khata,
- * users) with a 14-day free trial (21 days with referral code). Store owners
+ * users) with a 30-day free trial on the Pro plan. Store owners
  * then create staff logins from Settings → Users inside the app.
  */
 export default function SignUp() {
   const { login } = useAuth();
   const navigate = useNavigate();
-  const urlRef = new URLSearchParams(window.location.search).get('ref') || '';
   const [storeName, setStoreName] = useState('');
   const [ownerName, setOwnerName] = useState('');
   const [phone, setPhone] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [referralCode, setReferralCode] = useState(urlRef);
-  const [refInfo, setRefInfo] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-
-  const checkCode = (code) => {
-    const clean = String(code || '').trim().toUpperCase();
-    if (!clean) { setRefInfo(null); return; }
-    api(`/api/public/referral-check?code=${encodeURIComponent(clean)}`)
-      .then((r) => { if (r.valid) setRefInfo(r); else setRefInfo(null); })
-      .catch(() => setRefInfo(null));
-  };
-
-  useEffect(() => {
-    if (urlRef) checkCode(urlRef);
-  }, [urlRef]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -56,7 +41,7 @@ export default function SignUp() {
     try {
       const data = await api('/api/auth/signup', {
         method: 'POST',
-        body: { store_name: storeName, name: ownerName, username, password, phone, referral_code: referralCode },
+        body: { store_name: storeName, name: ownerName, username, password, phone },
       });
       login(data.token, data.user);
       navigate('/dashboard');
@@ -75,26 +60,20 @@ export default function SignUp() {
         alignItems: 'center',
         justifyContent: 'center',
         p: 2,
-        background: 'linear-gradient(135deg, #00695c 0%, #004d40 60%, #00251a 100%)',
+        background: 'linear-gradient(135deg, #0F766E 0%, #115E59 60%, #1E293B 100%)',
       }}
     >
-      <Card sx={{ width: 440, maxWidth: '100%', p: 1 }}>
+      <Card sx={{ width: 440, maxWidth: '100%', p: 1, borderRadius: 3 }}>
         <CardContent sx={{ p: 3 }}>
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 2.5 }}>
             <Avatar sx={{ bgcolor: 'primary.main', width: 64, height: 64, mb: 1.5 }}>
               <LocalPharmacyIcon sx={{ fontSize: 34 }} />
             </Avatar>
-            <Typography variant="h5">MediStock</Typography>
+            <Typography variant="h5" sx={{ fontWeight: 800 }}>{BRAND_NAME}</Typography>
             <Typography variant="body2" color="text.secondary">
-              Register your store — {refInfo ? '🎁 28-Day Extended Free Trial' : '21-Day Free Trial'}
+              Register your store — First Month Free (30-Day Trial)
             </Typography>
           </Box>
-
-          {refInfo && (
-            <Alert severity="success" icon={<CardGiftcardIcon />} sx={{ mb: 2 }}>
-              🎉 <b>Referral Bonus Active!</b> Invited by <b>{refInfo.store_name}</b>. You get an extended <b>28-Day Free Trial</b>!
-            </Alert>
-          )}
 
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
@@ -137,23 +116,10 @@ export default function SignUp() {
                   </InputAdornment>
                 ),
               }}
-              sx={{ mb: 2 }}
-            />
-            <TextField
-              label="Referral Code (optional)" fullWidth
-              value={referralCode}
-              onChange={(e) => {
-                const c = e.target.value.toUpperCase();
-                setReferralCode(c);
-                checkCode(c);
-              }}
-              placeholder="e.g. APOLLO1"
-              helperText={refInfo ? `✅ Valid code from ${refInfo.store_name} (+7 bonus trial days)` : 'Got an invite from a chemist friend? Enter their code here'}
-              InputProps={{ startAdornment: (<InputAdornment position="start"><CardGiftcardIcon color={refInfo ? 'success' : 'action'} /></InputAdornment>) }}
               sx={{ mb: 3 }}
             />
-            <Button type="submit" variant="contained" size="large" fullWidth startIcon={<LoginIcon />} disabled={busy}>
-              {busy ? 'Creating Your Store…' : `Create Store & Start Free ${refInfo ? '28-Day' : '21-Day'} Trial`}
+            <Button type="submit" variant="contained" size="large" fullWidth startIcon={<LoginIcon />} disabled={busy} sx={{ py: 1.4, fontWeight: 700 }}>
+              {busy ? 'Creating Your Store…' : 'Create Store & Start Free 30-Day Trial'}
             </Button>
           </form>
 
@@ -161,7 +127,7 @@ export default function SignUp() {
             <Typography variant="body2" color="text.secondary">
               Already have an account?{' '}
             </Typography>
-            <Button component="a" href="/login" variant="text" size="small">
+            <Button component="a" href="/login" variant="text" size="small" sx={{ fontWeight: 700 }}>
               Sign In
             </Button>
           </Box>

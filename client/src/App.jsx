@@ -17,7 +17,6 @@ import Settings from './pages/Settings';
 import Companies from './pages/Companies';
 import InvoiceView from './pages/InvoiceView';
 import Subscription from './pages/Subscription';
-import Referrals from './pages/Referrals';
 import Onboarding from './pages/Onboarding';
 import Landing from './pages/Landing';
 import Privacy from './pages/Privacy';
@@ -47,7 +46,6 @@ export default function App() {
                 <Route path="/reports" element={<Reports />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/subscription" element={<Subscription />} />
-                <Route path="/referrals" element={<Referrals />} />
                 <Route path="/app" element={<Navigate to="/dashboard" replace />} />
                 <Route path="*" element={<Navigate to="/dashboard" replace />} />
               </Route>
