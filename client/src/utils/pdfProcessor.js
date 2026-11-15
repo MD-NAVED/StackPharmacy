@@ -171,7 +171,7 @@ export async function parseInvoicePDF(
         }
 
         const scanPct = Math.round(20 + ((i - 0.2) / maxPages) * 70);
-        onProgress(`✨ AI Scan (Gemini) page ${i} of ${maxPages}…`, scanPct, {
+        onProgress(`🛡️ AI Scan (NVIDIA NIM) page ${i} of ${maxPages}…`, scanPct, {
           page: i,
           totalPages: maxPages,
           stage: 'scanning',

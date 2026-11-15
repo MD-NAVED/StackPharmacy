@@ -742,7 +742,7 @@ export default function Purchases({ initialLines, initialOpen, initialScannedNot
               ) : (scanEngine && scanEngine.startsWith('nvidia:')) ? (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                   <Chip size="small" label={`🛡️ ${scanEngine}`} sx={{ bgcolor: '#e8f5e9', color: '#2e7d32', fontWeight: 700 }} />
-                  <span>Extracted by AI (cloud backup) — please verify before saving.</span>
+                  <span>Extracted by NVIDIA AI (cloud) — please verify before saving.</span>
                 </Box>
               ) : (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>

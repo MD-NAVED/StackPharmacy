@@ -623,7 +623,7 @@ export async function parseInvoiceFile(file, medicinesList = [], onProgress = ()
   const compressedBlob = await compressImage(file, 2000, 0.92);
   
   try {
-    onProgress('✨ AI Scan (Gemini) - Processing...', 50, { stage: 'cloud_scan' });
+    onProgress('🛡️ AI Scan (NVIDIA NIM) - Processing...', 50, { stage: 'cloud_scan' });
     // Convert blob to base64
     const base64 = await new Promise((resolve) => {
       const reader = new FileReader();
