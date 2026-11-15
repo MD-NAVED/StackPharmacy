@@ -631,7 +631,7 @@ export async function parseInvoiceFile(file, medicinesList = [], onProgress = ()
       reader.readAsDataURL(compressedBlob);
     });
     const parsed = await parseInvoiceViaServer(base64, medicinesList, options);
-    console.log(`[Invoice Scanner] engine=${parsed.engine || 'gemini'} completed successfully`);
+    console.log(`[Invoice Scanner] engine=${parsed.engine || 'nvidia:nemotron-3.5-parse'} completed successfully`);
     onProgress('Complete!', 100, { stage: 'done' });
     return parsed;
   } catch (err) {

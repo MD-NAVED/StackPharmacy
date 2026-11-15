@@ -14,6 +14,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { parseInvoiceText: defaultParseInvoiceText } = require('./invoiceTextParser');
 
 const NVIDIA_API_BASE = 'https://integrate.api.nvidia.com/v1';
 const MODEL_M1_PARSE = 'nvidia/nemotron-parse';
@@ -390,16 +391,9 @@ async function executeNvidiaTier({
     }
   }
 
-  // If parseInvoiceTextFn not passed, import dynamically
+  // Ensure parseInvoiceText is always available (no external client imports on Vercel)
   if (!parseInvoiceTextFn) {
-    try {
-      const { pathToFileURL } = require('url');
-      const parserPath = path.resolve(__dirname, '../../client/src/utils/invoiceParser.js');
-      const invModule = await import(pathToFileURL(parserPath).href);
-      parseInvoiceTextFn = invModule.parseInvoiceText;
-    } catch (e) {
-      logScanDebug('NVIDIA_TIER', { error: 'Failed to load parseInvoiceText', details: e.message });
-    }
+    parseInvoiceTextFn = defaultParseInvoiceText;
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -520,13 +514,13 @@ async function executeNvidiaTier({
               });
               return {
                 engine: 'nvidia:nemotron-3.5-parse',
-                bill_no: m1Parsed.invoice_number || '',
-                invoice_number: m1Parsed.invoice_number || '',
-                distributor: m1Parsed.supplier_name || '',
-                supplier_name: m1Parsed.supplier_name || '',
-                date: m1Parsed.date || '',
-                invoice_date: m1Parsed.date || '',
-                total: billTotal,
+                bill_no: m1Parsed.invoice_number || structuredResult?.invoice_number || '',
+                invoice_number: m1Parsed.invoice_number || structuredResult?.invoice_number || '',
+                distributor: m1Parsed.supplier_name || structuredResult?.supplier_name || '',
+                supplier_name: m1Parsed.supplier_name || structuredResult?.supplier_name || '',
+                date: m1Parsed.date || structuredResult?.invoice_date || '',
+                invoice_date: m1Parsed.date || structuredResult?.invoice_date || '',
+                total: billTotal || structuredResult?.total || 0,
                 error: null,
                 items: validatedItems,
                 debug: {
@@ -573,7 +567,7 @@ async function executeNvidiaTier({
     return null;
   }
 
-  const m2Timeout = Math.min(8000, Math.max(1000, maxTotalBudgetMs - elapsedBeforeM2));
+  const m2Timeout = Math.min(18000, Math.max(2000, maxTotalBudgetMs - elapsedBeforeM2));
   logScanDebug('API_CALL', {
     provider: 'nvidia',
     model: MODEL_M2_VISION,
