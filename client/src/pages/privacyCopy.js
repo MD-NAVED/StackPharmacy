@@ -89,7 +89,7 @@ export const PRIVACY_SECTIONS = [
       },
       {
         heading: 'RAM-Only Processing (Immediate Image Discarding)',
-        body: 'Our server processes your bill photo in memory (RAM only) to extract medicine names and numbers. The image is never saved to our database, never written to disk, and is discarded immediately after the items are read.'
+        body: 'Our server processes your bill photo in memory (RAM only) to extract medicine names and numbers. For extraction, the image is sent securely over HTTPS to our AI providers (Google Gemini, with NVIDIA as backup) for transient processing. It is never stored by them or us, and is discarded immediately after extraction. The image is never saved to our database, never written to disk, and is discarded immediately after the items are read.'
       },
       {
         heading: 'You Are Always in Control',

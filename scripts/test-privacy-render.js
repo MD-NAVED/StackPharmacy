@@ -97,6 +97,10 @@ assert(
   'Must include exact required Gemini disclosure sentence'
 );
 assert(
+  cleanHtml.includes('For extraction, the image is sent securely over HTTPS to our AI providers (Google Gemini, with NVIDIA as backup) for transient processing. It is never stored by them or us, and is discarded immediately after extraction.'),
+  'Must include exact honest sentence naming AI providers (Google Gemini, with NVIDIA as backup) in RAM-only processing section'
+);
+assert(
   cleanHtml.includes('The image is never saved to our database, never written to disk, and is discarded immediately after the items are read.'),
   'Must state that bill photos are discarded in memory and not permanently stored'
 );
