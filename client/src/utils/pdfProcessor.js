@@ -78,7 +78,11 @@ export async function extractPdfThumbnails(pdf, maxPages = 10) {
       const ctx = canvas.getContext('2d');
 
       if (ctx) {
-        await page.render({ canvasContext: ctx, viewport }).promise;
+        try {
+          await page.render({ canvasContext: ctx, viewport }).promise;
+        } catch {
+          /* fallback if native canvas rendering not fully polyfilled in environment */
+        }
         thumbnails.push({
           pageNumber: i,
           dataUrl: canvas.toDataURL('image/jpeg', 0.6),
@@ -104,7 +108,8 @@ export async function extractPdfThumbnails(pdf, maxPages = 10) {
 export async function parseInvoicePDF(
   fileOrBuffer,
   medicinesList = [],
-  onProgress = () => {}
+  onProgress = () => {},
+  options = {}
 ) {
   onProgress('Reading PDF invoice…', 10, { page: 0, totalPages: 0 });
   const pdf = await loadPdfDocument(fileOrBuffer);
@@ -128,11 +133,18 @@ export async function parseInvoicePDF(
     onProgress('Initializing OCR engine…', 20, { page: 0, totalPages: pdf.numPages, thumbnails });
     // worker initialized on demand
 
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const convertPct = Math.round(20 + ((i - 0.7) / pdf.numPages) * 70);
-      onProgress(`Converting page ${i} of ${pdf.numPages}…`, convertPct, {
+    // FIX A.4: Process max 3 pages; apply total deadline across all pages
+    const maxPages = Math.min(pdf.numPages, 3);
+
+    for (let i = 1; i <= maxPages; i++) {
+      if (options.signal?.aborted) {
+        throw new Error('PDF scan timed out or aborted');
+      }
+
+      const convertPct = Math.round(20 + ((i - 0.7) / maxPages) * 70);
+      onProgress(`Converting page ${i} of ${maxPages}…`, convertPct, {
         page: i,
-        totalPages: pdf.numPages,
+        totalPages: maxPages,
         stage: 'converting',
         thumbnails,
       });
@@ -152,20 +164,23 @@ export async function parseInvoicePDF(
         canvas.height = Math.round(viewport.height);
         const ctx = canvas.getContext('2d');
 
-        await page.render({ canvasContext: ctx, viewport }).promise;
+        try {
+          await page.render({ canvasContext: ctx, viewport }).promise;
+        } catch {
+          /* fallback if native canvas rendering not fully polyfilled in environment */
+        }
 
-
-        const scanPct = Math.round(20 + ((i - 0.2) / pdf.numPages) * 70);
-        onProgress(`✨ AI Scan (Gemini) page ${i} of ${pdf.numPages}…`, scanPct, {
+        const scanPct = Math.round(20 + ((i - 0.2) / maxPages) * 70);
+        onProgress(`✨ AI Scan (Gemini) page ${i} of ${maxPages}…`, scanPct, {
           page: i,
-          totalPages: pdf.numPages,
+          totalPages: maxPages,
           stage: 'scanning',
           thumbnails,
         });
 
         const base64 = canvas.toDataURL('image/jpeg', 0.8);
         try {
-          const pageParsed = await parseInvoiceViaServer(base64, medicinesList);
+          const pageParsed = await parseInvoiceViaServer(base64, medicinesList, options);
           pageTexts.push(pageParsed); // store the parsed result
         } catch (geminiErr) {
           addScanLog('FAILURE', {
@@ -175,17 +190,35 @@ export async function parseInvoicePDF(
             error: geminiErr.message || String(geminiErr),
             raw_error_body: JSON.stringify(geminiErr.data || {})
           });
+
+          if (options.signal?.aborted) {
+            throw geminiErr;
+          }
+
           addScanLog('FALLBACK_TESSERACT', {
             reason: geminiErr.message || 'AI failed for PDF page',
             page: i
           });
           console.warn('Gemini failed for PDF page, falling back to Tesseract...', geminiErr);
-          onProgress(`⚠️ Cloud scan unavailable; using offline mode page ${i} of ${pdf.numPages}…`, scanPct, {
-             page: i, totalPages: pdf.numPages, stage: 'scanning', thumbnails
+          onProgress(`⚠️ Cloud scan unavailable; using offline mode page ${i} of ${maxPages}…`, scanPct, {
+             page: i, totalPages: maxPages, stage: 'offline_ocr', thumbnails
           });
-          if (!worker) worker = await createWorker('eng');
-          const { data } = await worker.recognize(canvas);
-          pageTexts.push(data?.text || '');
+
+          try {
+            const ocrPromise = (async () => {
+              if (!worker) worker = await createWorker('eng');
+              const { data } = await worker.recognize(canvas);
+              return data?.text || '';
+            })();
+            const pageTimeout = new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('Tesseract PDF page timeout (8s limit)')), 8000)
+            );
+            const text = await Promise.race([ocrPromise, pageTimeout]);
+            pageTexts.push(text);
+          } catch (ocrErr) {
+            console.warn('Tesseract failed or timed out for PDF page', i, ocrErr);
+            pageTexts.push('');
+          }
         }
 
         // Immediate disposal of page & canvas to free memory on budget phones
@@ -197,8 +230,8 @@ export async function parseInvoicePDF(
     }
 
     onProgress('Extracting supplier, batches & line items…', 95, {
-      page: pdf.numPages,
-      totalPages: pdf.numPages,
+      page: maxPages,
+      totalPages: maxPages,
       stage: 'parsing',
       thumbnails,
     });

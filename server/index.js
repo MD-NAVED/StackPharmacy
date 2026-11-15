@@ -1325,7 +1325,7 @@ const scanInvoiceHandler = async (req, res, next) => {
     }
     const modelChain = geminiModelChain;
 
-    const makeGeminiRequestForModel = async (modelName, perAttemptTimeout = 12000) => {
+    const makeGeminiRequestForModel = async (modelName, perAttemptTimeout = 7000, externalSignal = null) => {
       const geminiUrl = isClassicKey
         ? `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`
         : `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`;
@@ -1336,6 +1336,16 @@ const scanInvoiceHandler = async (req, res, next) => {
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), perAttemptTimeout);
+
+      const onExternalAbort = () => controller.abort();
+      if (externalSignal) {
+        if (externalSignal.aborted) {
+          clearTimeout(timeoutId);
+          throw new Error('Chain deadline reached');
+        }
+        externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+      }
+
       try {
         const response = await fetch(geminiUrl, {
           method: 'POST',
@@ -1359,9 +1369,11 @@ const scanInvoiceHandler = async (req, res, next) => {
           signal: controller.signal
         });
         clearTimeout(timeoutId);
+        if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort);
         return response;
       } catch (err) {
         clearTimeout(timeoutId);
+        if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort);
         throw err;
       }
     };
@@ -1380,7 +1392,11 @@ const scanInvoiceHandler = async (req, res, next) => {
     let geminiRes = null;
     let usedModel = modelChain[0];
     let lastNetworkError = null;
-    const totalBudgetMs = 20000; // 20s total cloud budget
+    const totalBudgetMs = 18000; // FIX A: Hard 18s budget on entire model chain
+    const chainController = new AbortController();
+    const chainTimer = setTimeout(() => {
+      chainController.abort();
+    }, totalBudgetMs);
 
     logScanDebug('API_KEY_CHECK', { key_format: isClassicKey ? 'classic' : 'v2', chain: modelChain });
 
@@ -1388,23 +1404,31 @@ const scanInvoiceHandler = async (req, res, next) => {
     for (let ci = 0; ci < modelChain.length; ci++) {
       const modelName = modelChain[ci];
       const elapsed = Date.now() - startTime;
-      if (elapsed >= totalBudgetMs) {
+      if (elapsed >= totalBudgetMs || chainController.signal.aborted) {
         logScanDebug('FAILURE', { failed_stage: 'CLOUD_BUDGET_EXHAUSTED', elapsed_ms: elapsed, models_tried: ci });
         break;
       }
       const remainingBudget = totalBudgetMs - elapsed;
-      const perAttemptTimeout = Math.min(12000, remainingBudget);
+      const perAttemptTimeout = Math.min(7000, remainingBudget); // FIX A: 7s per attempt
 
-      // For the LAST model in chain: allow 1 retry with 2s backoff (existing behavior)
+      // For the LAST model in chain: allow 1 retry with backoff within budget
       const isLastModel = ci === modelChain.length - 1;
       const maxAttempts = isLastModel ? 2 : 1;
 
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        const attemptElapsed = Date.now() - startTime;
+        if (attemptElapsed >= totalBudgetMs || chainController.signal.aborted) {
+          logScanDebug('FAILURE', { failed_stage: 'CLOUD_BUDGET_EXHAUSTED', elapsed_ms: attemptElapsed, models_tried: ci });
+          break;
+        }
+        const attemptRemaining = Math.max(500, totalBudgetMs - attemptElapsed);
+        const thisTimeout = Math.min(perAttemptTimeout, attemptRemaining);
+
         try {
           if (process.env.SIMULATE_503_MODEL && (process.env.SIMULATE_503_MODEL === 'ALL' || process.env.SIMULATE_503_MODEL === modelName)) {
             logScanDebug('API_RETRY', { attempt, model: modelName, status: 503, message: 'The model is currently experiencing high demand (simulated 503)' });
             if (isLastModel && attempt === 1) {
-              await new Promise(r => setTimeout(r, 2000));
+              await new Promise(r => setTimeout(r, 1000));
               geminiRes = null;
               continue;
             }
@@ -1418,7 +1442,24 @@ const scanInvoiceHandler = async (req, res, next) => {
             break;
           }
 
-          geminiRes = await makeGeminiRequestForModel(modelName, perAttemptTimeout);
+          if (process.env.SIMULATE_HANG_MODEL && (process.env.SIMULATE_HANG_MODEL === 'ALL' || process.env.SIMULATE_HANG_MODEL === modelName)) {
+            // Simulate hang: wait until aborted by attempt timeout or chain timeout
+            logScanDebug('API_RETRY', { attempt, model: modelName, message: 'Simulating hang (upstream congestion)...' });
+            await new Promise((_, reject) => {
+              const timer = setTimeout(() => reject(new Error('Simulated hang attempt timeout')), thisTimeout);
+              if (chainController.signal.aborted) {
+                clearTimeout(timer);
+                reject(new Error('Simulated hang chain budget exceeded'));
+              } else {
+                chainController.signal.addEventListener('abort', () => {
+                  clearTimeout(timer);
+                  reject(new Error('Simulated hang chain budget exceeded'));
+                }, { once: true });
+              }
+            });
+          }
+
+          geminiRes = await makeGeminiRequestForModel(modelName, thisTimeout, chainController.signal);
 
           if (geminiRes.ok || geminiRes.status === 429) {
             usedModel = modelName;
@@ -1432,19 +1473,19 @@ const scanInvoiceHandler = async (req, res, next) => {
             if (is503Unavailable(geminiRes, errorBody)) {
               logScanDebug('API_RETRY', { attempt, model: modelName, status: geminiRes.status, message: 'Model unavailable / high demand' });
               if (isLastModel && attempt === 1) {
-                // Last model gets 1 retry with 2s backoff
-                await new Promise(r => setTimeout(r, 2000));
+                // Last model gets 1 retry with backoff
+                await new Promise(r => setTimeout(r, 1000));
                 geminiRes = null;
                 continue;
               }
               // Not last model: switch immediately
               logScanDebug('MODEL_SWITCH', { from_model: modelName, to_model: modelChain[ci + 1] || 'tesseract-fallback', reason: `HTTP ${geminiRes.status}: ${errorBody.slice(0, 200)}` });
               geminiRes = null;
-              // 500ms pause between models
-              await new Promise(r => setTimeout(r, 500));
+              // 200ms pause between models
+              await new Promise(r => setTimeout(r, 200));
               break; // try next model
             }
-            // Non-503 5xx: for last model, retry once
+            // Non-503 5xx: for last model, retry once if budget allows
             if (isLastModel && attempt === 1) {
               logScanDebug('API_RETRY', { attempt: 1, model: modelName, status: geminiRes.status, message: 'Server error, retrying...' });
               await new Promise(r => setTimeout(r, 1000));
@@ -1459,22 +1500,42 @@ const scanInvoiceHandler = async (req, res, next) => {
         } catch (e) {
           lastNetworkError = e;
           logScanDebug('API_RETRY', { attempt, model: modelName, error: e.name || 'Error', message: e.message || String(e) });
+          if (chainController.signal.aborted || Date.now() - startTime >= totalBudgetMs) {
+            logScanDebug('FAILURE', { failed_stage: 'CLOUD_BUDGET_EXHAUSTED', elapsed_ms: Date.now() - startTime });
+            break;
+          }
           if (isLastModel && attempt === 1) {
             await new Promise(r => setTimeout(r, 1000));
             continue;
           }
           if (ci < modelChain.length - 1) {
             logScanDebug('MODEL_SWITCH', { from_model: modelName, to_model: modelChain[ci + 1], reason: e.message || 'Network error' });
-            await new Promise(r => setTimeout(r, 500));
+            await new Promise(r => setTimeout(r, 200));
           }
           break;
         }
+      }
+
+      if (chainController.signal.aborted || Date.now() - startTime >= totalBudgetMs) {
+        break;
       }
 
       if (geminiRes && (geminiRes.ok || geminiRes.status === 429)) {
         usedModel = modelName;
         break;
       }
+    }
+
+    clearTimeout(chainTimer);
+
+    if (!geminiRes && (chainController.signal.aborted || Date.now() - startTime >= totalBudgetMs)) {
+      const latency_ms = Date.now() - startTime;
+      logScanDebug('FAILURE', { failed_stage: 'ALL_MODELS_EXHAUSTED', latency_ms, models_tried: modelChain.length, reason: 'CHAIN_BUDGET_EXCEEDED' });
+      return res.status(503).json({
+        error: 'Scan failed — AI service busy. Please try again in a minute, or use manual entry.',
+        stage: 'ALL_MODELS_EXHAUSTED',
+        latency_ms
+      });
     }
 
     if (!geminiRes && lastNetworkError) {
@@ -1562,9 +1623,9 @@ const scanInvoiceHandler = async (req, res, next) => {
       }
     } catch (e) {
       logScanDebug('JSON_PARSE_ERROR', { error: e.message, raw: rawText.slice(0, 300) });
-      // 1 retry for malformed JSON
+      // 1 retry for malformed JSON within 7s limit
       try {
-        const retryRes = await makeGeminiRequestForModel(usedModel, 12000);
+        const retryRes = await makeGeminiRequestForModel(usedModel, 7000);
         if (retryRes.ok) {
           const retryResJson = await retryRes.json();
           let retryRaw = retryResJson.candidates?.[0]?.content?.parts?.[0]?.text || '';

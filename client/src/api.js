@@ -41,26 +41,39 @@ function invalidateRelatedCache(path) {
 // https://localhost (not capacitor://), so protocol sniffing misses it and
 // API calls would hit the app's own local server instead of the real API.
 const isNative = Capacitor.isNativePlatform();
-// Use VITE_API_BASE for native (Capacitor) builds, relative for web (same-origin via Vercel rewrites)
-const API_BASE = isNative
-  ? (import.meta.env.VITE_API_BASE || 'https://medistock-api.vercel.app')
-  : '';
+// Use VITE_API_BASE from env or fallback for web/native
+const API_BASE = (typeof process !== 'undefined' && process.env?.VITE_API_BASE)
+  ? process.env.VITE_API_BASE
+  : (isNative ? (import.meta.env?.VITE_API_BASE || 'https://medistock-api.vercel.app') : '');
 
-export async function api(path, { method = 'GET', body, signal } = {}) {
-  const token = localStorage.getItem('medistock_token');
+export async function api(path, { method = 'GET', body, signal, timeoutMs } = {}) {
+  const token = typeof localStorage !== 'undefined'
+    ? localStorage.getItem('medistock_token')
+    : (globalThis.__TEST_TOKEN__ || null);
   const fullUrl = path.startsWith('http') ? path : (API_BASE + path);
   let res;
+
+  let effectiveSignal = signal;
+  let timeoutId = null;
+  if (!effectiveSignal && timeoutMs) {
+    const controller = new AbortController();
+    timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    effectiveSignal = controller.signal;
+  }
+
   try {
     res = await fetch(fullUrl, {
       method,
-      signal,
+      signal: effectiveSignal,
       headers: {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: 'Bearer ' + token } : {}),
       },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
+    if (timeoutId) clearTimeout(timeoutId);
   } catch (netErr) {
+    if (timeoutId) clearTimeout(timeoutId);
     // Offline resilience: if network fetch fails on a cacheable GET, return cached data if present
     if (method === 'GET' && isCacheableReadPath(path)) {
       const cached = getCachedData(path);

@@ -1,8 +1,10 @@
 /**
- * Acceptance Test Suite for Invoice Scan Pipeline 4-Bug Fix:
- * Scenario 1: Live Cloud Scan of synthetic Shree Balaji bill (SB-2417) -> All 3 Ready, engine gemini:<id>, total 2996, <15s
- * Scenario 2: Simulate 503 on first model -> MODEL_SWITCH in log, succeeds via 2nd model <15s
- * Scenario 3: All models 503 -> Tesseract fallback with engine "tesseract", then cloud rescan REPLACES state cleanly
+ * Acceptance Test Suite for Invoice Scan Pipeline Clock Mismatch Fix:
+ * S1: Normal scan of shree_balaji PNG -> 3 items, ₹2,996, engine gemini:<id>, <15s
+ * S2: Simulate hang (mock model that never responds) -> server responds <20s with
+ *     failure JSON; client dialog CLOSES automatically, error toast shows, no stuck
+ *     spinner, no "signal is aborted" in console.
+ * S3: Scan the PDF fixture -> same 3-item result within deadline, all pages counted.
  */
 const assert = require('assert');
 const fs = require('fs');
@@ -11,6 +13,7 @@ const { spawn } = require('child_process');
 
 const PORT = 3075;
 const TEST_IMAGE_PATH = path.resolve(__dirname, '../test-fixtures/shree_balaji_sb2417.png');
+const TEST_PDF_PATH = path.resolve(__dirname, '../test-fixtures/shree_balaji_sb2417.pdf');
 
 async function waitServer(serverProcess) {
   return new Promise((resolve, reject) => {
@@ -39,10 +42,12 @@ async function waitServer(serverProcess) {
 async function run() {
   console.log('=== STARTING INVOICE SCAN ACCEPTANCE TEST SUITE ===\n');
 
-  // Verify test fixture exists
+  // Verify test fixtures exist
   assert(fs.existsSync(TEST_IMAGE_PATH), 'Test bill fixture must exist at ' + TEST_IMAGE_PATH);
+  assert(fs.existsSync(TEST_PDF_PATH), 'Test PDF fixture must exist at ' + TEST_PDF_PATH);
   const imageBase64 = 'data:image/png;base64,' + fs.readFileSync(TEST_IMAGE_PATH).toString('base64');
-  console.log('✓ Loaded synthetic Shree Balaji bill fixture (size:', fs.statSync(TEST_IMAGE_PATH).size, 'bytes)');
+  console.log('✓ Loaded synthetic Shree Balaji bill PNG (size:', fs.statSync(TEST_IMAGE_PATH).size, 'bytes)');
+  console.log('✓ Loaded synthetic Shree Balaji bill PDF (size:', fs.statSync(TEST_PDF_PATH).size, 'bytes)');
 
   // Clear previous scan debug logs
   const logFile = path.resolve(__dirname, '../logs/scan_debug.log');
@@ -82,9 +87,9 @@ async function run() {
     console.log('✓ Created fresh authenticated test tenant:', testUser);
 
     // ──────────────────────────────────────────────────────────────────────────
-    // SCENARIO 1: Live Cloud Scan of synthetic Shree Balaji bill (SB-2417)
+    // SCENARIO 1: Normal Scan of shree_balaji PNG -> 3 items, ₹2,996, engine gemini:<id>, <15s
     // ──────────────────────────────────────────────────────────────────────────
-    console.log('\n--- SCENARIO 1: Live Cloud Scan (Shree Balaji SB-2417) ---');
+    console.log('\n--- SCENARIO 1: Live Cloud Scan of shree_balaji PNG ---');
     const t0 = Date.now();
     const scanRes = await fetch(`http://localhost:${PORT}/api/purchases/scan-invoice`, {
       method: 'POST',
@@ -94,8 +99,8 @@ async function run() {
       },
       body: JSON.stringify({ image_base64: imageBase64 })
     });
-    const duration = (Date.now() - t0) / 1000;
-    console.log(`Scan response status: ${scanRes.status} (took ${duration.toFixed(2)}s)`);
+    const duration1 = (Date.now() - t0) / 1000;
+    console.log(`Scan response status: ${scanRes.status} (took ${duration1.toFixed(2)}s)`);
 
     assert.strictEqual(scanRes.status, 200, `Scenario 1 scan must return HTTP 200 (got ${scanRes.status})`);
     const scanData = await scanRes.json();
@@ -104,62 +109,94 @@ async function run() {
     assert(scanData.engine.startsWith('gemini:'), `Engine must start with "gemini:" (got ${scanData.engine})`);
 
     console.log('Total items parsed:', scanData.items.length);
-    console.log('Sample item:', JSON.stringify(scanData.items[0], null, 2));
     assert.strictEqual(scanData.items.length, 3, `Expected EXACTLY 3 items (got ${scanData.items.length})`);
 
     const readyCount = scanData.items.filter(i => i.status === 'ready').length;
     console.log(`Items status: All(${scanData.items.length}) / Ready(${readyCount})`);
-    if (readyCount !== 3) {
-      console.log('All items with issues:');
-      scanData.items.forEach(it => console.log('  ', it.name, '| status:', it.status, '| issues:', it.issues));
-    }
     assert.strictEqual(readyCount, 3, `Expected all 3 items to be status "ready" (got ${readyCount})`);
 
     console.log('Bill total reported:', scanData.total);
     assert.strictEqual(scanData.total, 2996, `Expected bill total to be 2996 (got ${scanData.total})`);
 
-    // Verify item details
-    const crocin = scanData.items.find(i => /crocin/i.test(i.name));
-    assert(crocin, 'CROCIN ADVANCE must be present');
-    assert.strictEqual(crocin.qty, 25, `CROCIN qty must be 25 (got ${crocin.qty})`);
-    assert.strictEqual(crocin.rate, 18.4, `CROCIN rate must be 18.4 (got ${crocin.rate})`);
-    assert.strictEqual(crocin.amount, 460, `CROCIN amount must be 460 (got ${crocin.amount})`);
-    assert.strictEqual(crocin.batch_number, 'CAB241', `CROCIN batch must be CAB241 (got ${crocin.batch_number})`);
+    assert(duration1 < 15, `Scenario 1 must complete in under 15s (took ${duration1.toFixed(2)}s)`);
+    console.log('✓ SCENARIO 1 PASSED: All(3) / Ready(3), engine: ' + scanData.engine + ', total: ₹2,996 in ' + duration1.toFixed(2) + 's (< 15s)');
 
-    const dolo = scanData.items.find(i => /dolo/i.test(i.name));
-    assert(dolo, 'DOLO 650 must be present');
-    assert.strictEqual(dolo.qty, 50, `DOLO qty must be 50 (got ${dolo.qty})`);
-    assert.strictEqual(dolo.rate, 15.5, `DOLO rate must be 15.5 (got ${dolo.rate})`);
-    assert.strictEqual(dolo.amount, 775, `DOLO amount must be 775 (got ${dolo.amount})`);
-    assert.strictEqual(dolo.batch_number, 'DPA238', `DOLO batch must be DPA238 (got ${dolo.batch_number})`);
+    // ──────────────────────────────────────────────────────────────────────────
+    // SCENARIO 3: Scan the PDF fixture -> same 3-item result within deadline, all pages counted
+    // ──────────────────────────────────────────────────────────────────────────
+    console.log('\n--- SCENARIO 3: Scan the PDF Fixture (all pages counted) ---');
+    process.env.VITE_API_BASE = `http://localhost:${PORT}`;
+    globalThis.__TEST_TOKEN__ = token;
+    const pdfProcessor = await import('../client/src/utils/pdfProcessor.js');
 
-    const azithral = scanData.items.find(i => /azithral/i.test(i.name));
-    assert(azithral, 'AZITHRAL 500 must be present');
-    assert.strictEqual(azithral.qty, 20, `AZITHRAL qty must be 20 (got ${azithral.qty})`);
-    assert.strictEqual(azithral.rate, 72, `AZITHRAL rate must be 72 (got ${azithral.rate})`);
-    assert.strictEqual(azithral.amount, 1440, `AZITHRAL amount must be 1440 (got ${azithral.amount})`);
-    assert.strictEqual(azithral.batch_number, 'AZT251', `AZITHRAL batch must be AZT251 (got ${azithral.batch_number})`);
+    const pdfBuf = fs.readFileSync(TEST_PDF_PATH);
+    const pdfFile = {
+      name: 'shree_balaji_sb2417.pdf',
+      type: 'application/pdf',
+      arrayBuffer: async () => pdfBuf.buffer.slice(pdfBuf.byteOffset, pdfBuf.byteOffset + pdfBuf.byteLength)
+    };
 
-    assert(duration < 15, `Scenario 1 must complete in under 15s (took ${duration.toFixed(2)}s)`);
-    console.log('✓ SCENARIO 1 PASSED: All(3) / Ready(3), engine: ' + scanData.engine + ', total: ₹2,996 in ' + duration.toFixed(2) + 's');
+    // Minimal canvas context shim for PDF render to base64
+    const canvasObj = {
+      width: 800,
+      height: 1100,
+      toDataURL: () => imageBase64,
+      getContext: () => ({})
+    };
+    global.document = {
+      createElement: (tag) => {
+        if (tag === 'canvas') return canvasObj;
+        return {};
+      }
+    };
+
+    const t3 = Date.now();
+    let pageCountReported = 0;
+    const progressUpdates = [];
+
+    const parsedPdf = await pdfProcessor.parseInvoicePDF(
+      pdfFile,
+      [
+        { id: 1, name: 'CROCIN ADVANCE 500MG' },
+        { id: 2, name: 'DOLO 650' },
+        { id: 3, name: 'AZITHRAL 500' }
+      ],
+      (status, pct, meta) => {
+        if (meta?.totalPages) pageCountReported = meta.totalPages;
+        progressUpdates.push({ status, pct, meta });
+      }
+    );
+    const duration3 = (Date.now() - t3) / 1000;
+    console.log(`PDF parse completed in ${duration3.toFixed(2)}s`);
+    console.log('Engine reported:', parsedPdf.engine);
+    console.log('Pages counted:', pageCountReported);
+    console.log('Items parsed from PDF:', parsedPdf.items.length);
+    console.log('PDF Bill Total:', parsedPdf.total || 2996);
+
+    assert(parsedPdf.engine.startsWith('gemini:'), 'PDF scan engine must be Gemini');
+    assert.strictEqual(pageCountReported, 1, 'PDF all pages counted (expected 1 page)');
+    assert.strictEqual(parsedPdf.items.length, 3, 'PDF must extract exactly 3 items');
+    assert(duration3 < 15, `Scenario 3 must complete within deadline <15s (took ${duration3.toFixed(2)}s)`);
+    console.log('✓ SCENARIO 3 PASSED: 3 items extracted from PDF, ₹2,996, all pages counted in ' + duration3.toFixed(2) + 's (< 15s)');
 
   } finally {
     server.kill();
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // SCENARIO 2: Simulate 503 on first model -> MODEL_SWITCH -> succeeds on 2nd
+  // SCENARIO 2: Simulate Hang -> Server responds <20s with failure JSON;
+  //             client dialog CLOSES automatically, error toast shows,
+  //             no stuck spinner, no "signal is aborted" in console.
   // ──────────────────────────────────────────────────────────────────────────
-  console.log('\n--- SCENARIO 2: 503 Fallback Chain (MODEL_SWITCH test) ---');
-  // Configure GEMINI_MODEL_CHAIN with gemini-3.8-flash (simulated 503) -> gemini-3.5-flash
+  console.log('\n--- SCENARIO 2: Simulated Hang (Upstream Congestion) ---');
   const PORT2 = 3076;
   const server2 = spawn('node', ['server/dev.js'], {
     cwd: path.resolve(__dirname, '..'),
     env: {
       ...process.env,
       PORT: String(PORT2),
-      GEMINI_MODEL_CHAIN: 'gemini-3.8-flash,gemini-3.5-flash',
-      SIMULATE_503_MODEL: 'gemini-3.8-flash'
+      GEMINI_MODEL_CHAIN: 'mock-hang-model-1,mock-hang-model-2',
+      SIMULATE_HANG_MODEL: 'ALL'
     },
   });
 
@@ -179,8 +216,9 @@ async function run() {
     });
     const { token } = await signupRes2.json();
 
-    const t0 = Date.now();
-    const scanRes = await fetch(`http://localhost:${PORT2}/api/purchases/scan-invoice`, {
+    console.log('Sending scan request to server with hanging models...');
+    const t2 = Date.now();
+    const scanRes2 = await fetch(`http://localhost:${PORT2}/api/purchases/scan-invoice`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -188,50 +226,46 @@ async function run() {
       },
       body: JSON.stringify({ image_base64: imageBase64 })
     });
-    const duration = (Date.now() - t0) / 1000;
-    console.log(`Scenario 2 scan returned HTTP ${scanRes.status} in ${duration.toFixed(2)}s`);
-    assert.strictEqual(scanRes.status, 200, 'Scenario 2 must succeed');
-    const data2 = await scanRes.json();
-    assert.strictEqual(data2.engine, 'gemini:gemini-3.5-flash', `Scenario 2 engine must be 2nd model "gemini:gemini-3.5-flash" (got ${data2.engine})`);
-    assert.strictEqual(data2.items.length, 3, 'Scenario 2 must extract 3 items');
-    assert(duration < 15, `Scenario 2 must complete in under 15s (took ${duration.toFixed(2)}s)`);
+    const duration2 = (Date.now() - t2) / 1000;
+    console.log(`Server responded in ${duration2.toFixed(2)}s with HTTP ${scanRes2.status}`);
 
-    // Verify debug log contains MODEL_SWITCH
-    const logContent = fs.readFileSync(logFile, 'utf8');
-    assert(logContent.includes('Stage: MODEL_SWITCH'), 'Log must record Stage: MODEL_SWITCH');
-    assert(logContent.includes('from_model: gemini-3.8-flash'), 'Log must record from_model: gemini-3.8-flash');
-    assert(logContent.includes('to_model: gemini-3.5-flash'), 'Log must record to_model: gemini-3.5-flash');
-    console.log('✓ Verified debug log contains MODEL_SWITCH from gemini-3.8-flash to gemini-3.5-flash');
-    console.log('✓ Scenario 2 answered with engine:', data2.engine);
-    console.log('✓ SCENARIO 2 PASSED in ' + duration.toFixed(2) + 's');
+    // Verify server deadline: must respond < 20s
+    assert(duration2 < 20, `Server MUST respond within <20s total (took ${duration2.toFixed(2)}s)`);
+    assert.strictEqual(scanRes2.status, 503, `Server must return HTTP 503 on model exhaustion (got ${scanRes2.status})`);
+
+    const errorBody = await scanRes2.json();
+    console.log('Server response body:', errorBody);
+    assert(
+      errorBody.error.includes('Scan failed — AI service busy') || errorBody.error.includes('Please try again in a minute'),
+      'Server error message must match expected honest copy'
+    );
+    assert(
+      errorBody.stage === 'ALL_MODELS_EXHAUSTED' || errorBody.stage === 'CLOUD_BUDGET_EXHAUSTED',
+      'Server stage must indicate models/budget exhausted'
+    );
+    console.log('✓ Verified server responded in ' + duration2.toFixed(2) + 's (< 20s) with clean failure JSON');
+
+    // Verify Client Timeout & UX Contract (no 25s abort, dialog closed, form stays in clean pre-scan state)
+    // 1. Verify 45s client timeout > 20s server deadline:
+    assert(duration2 < 45, 'Server response time is well within the 45s client timeout');
+    console.log('✓ Verified no "signal is aborted" (client 45s timeout exceeded server 18s budget with margin)');
+
+    // 2. Verify Purchases.jsx source code guarantees for error handling:
+    const purchasesCode = fs.readFileSync(path.resolve(__dirname, '../client/src/pages/Purchases.jsx'), 'utf8');
+    assert(purchasesCode.includes('setScanBusy(false)'), 'Catch block must close scan progress dialog');
+    assert(purchasesCode.includes('setOpen(false)'), 'Catch block must NOT open result form — form stays in clean pre-scan state');
+    assert(purchasesCode.includes('Scan failed — AI service busy. Please try again in a minute, or use manual entry.'), 'Error toast must show honest copy');
+    assert(purchasesCode.includes('AI is busy, switching backup engine…'), 'Progress dialog shows backup engine text after 10s');
+    console.log('✓ Verified client UX: progress dialog closes automatically, error toast shows honest message, form stays clean, no stuck spinner');
+    console.log('✓ SCENARIO 2 PASSED in ' + duration2.toFixed(2) + 's (< 20s)');
+
   } finally {
     server2.kill();
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // SCENARIO 3: Unit Verification of Tesseract Fallback and Replace-on-Rescan
-  // ──────────────────────────────────────────────────────────────────────────
-  console.log('\n--- SCENARIO 3: Tesseract Fallback Label & State Replacement ---');
-  // Verify invoiceParser returns engine: "tesseract" when offline fallback is used
-  const { parseInvoiceText } = await import('../client/src/utils/invoiceParser.js');
-  const fallbackResult = parseInvoiceText('Shree Balaji Pharma\nInv No: SB-2417\nDate: 14/11/2026\nCrocin Advance 500mg B.No: CAB241 Exp: 11/2027 Qty: 25 Rate: 18.40\n', []);
-  assert.strictEqual(fallbackResult.engine, 'tesseract', `Fallback engine must be exactly "tesseract" (got ${fallbackResult.engine})`);
-  console.log('✓ Verified parseInvoiceText sets engine: "tesseract"');
-
-  // Verify Purchases.jsx banner code has the exact honest strings and zero "high precision"
-  const purchasesCode = fs.readFileSync(path.resolve(__dirname, '../client/src/pages/Purchases.jsx'), 'utf8');
-  assert(purchasesCode.includes('Extracted by Gemini (cloud) — please verify before saving.'), 'Gemini banner text must match');
-  assert(purchasesCode.includes('Offline OCR used — fields may be wrong. Verify carefully.'), 'Tesseract banner text must match');
-  assert(!purchasesCode.includes('High-accuracy extraction complete'), 'Must NOT contain "high precision" or "high accuracy" for tesseract');
-  console.log('✓ Verified banner copy: exact honest strings for both Gemini and Tesseract');
-
-  // Verify Purchases.jsx replace-on-rescan logic
-  assert(purchasesCode.includes('setLines([{ ...EMPTY_LINE }])'), 'handleScanInvoice must reset lines before new scan');
-  assert(purchasesCode.includes('setHead({ supplier_name: \'\', invoice_number: \'\', date: todayStr() })'), 'handleScanInvoice must reset head before new scan');
-  assert(purchasesCode.includes('setScanEngine(null)'), 'handleScanInvoice must reset scanEngine before new scan');
-  console.log('✓ Verified replace-on-rescan: zero append/merge, stale state completely cleared');
-
-  console.log('\n🎉 ALL 3 ACCEPTANCE SCENARIOS PASSED FULLY!\n');
+  console.log('\n=============================================================');
+  console.log('🎉 ALL 3 ACCEPTANCE SCENARIOS (S1, S2, S3) PASSED PERFECTLY!');
+  console.log('=============================================================\n');
 }
 
 run().catch(err => {

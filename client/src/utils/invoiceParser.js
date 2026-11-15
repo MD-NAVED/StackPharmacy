@@ -376,18 +376,27 @@ export function parseInvoiceText(rawText, medicinesList = []) {
 export async function parseInvoiceViaServer(base64Image, medicinesList, options = {}) {
   const startTime = Date.now();
   let data;
-  const internalController = new AbortController();
-  const timeoutId = setTimeout(() => internalController.abort(), 25000);
-  const signal = options.signal || internalController.signal;
+  
+  // FIX B: 45s client timeout (must exceed server worst case ~20s + margin)
+  let internalController = null;
+  let signal = options.signal;
+  let timeoutId = null;
+
+  if (!signal) {
+    internalController = new AbortController();
+    timeoutId = setTimeout(() => internalController.abort(), 45000);
+    signal = internalController.signal;
+  }
+
   try {
     data = await api('/api/purchases/scan-invoice', {
       method: 'POST',
       body: { image_base64: base64Image },
       signal,
     });
-    clearTimeout(timeoutId);
+    if (timeoutId) clearTimeout(timeoutId);
   } catch (err) {
-    clearTimeout(timeoutId);
+    if (timeoutId) clearTimeout(timeoutId);
     const latency_ms = Date.now() - startTime;
     addScanLog('FAILURE', {
       failed_stage: 'API_CALL',
@@ -525,7 +534,7 @@ export async function parseInvoiceFile(file, medicinesList = [], onProgress = ()
   const compressedBlob = await compressImage(file, 2000, 0.92);
   
   try {
-    onProgress('✨ AI Scan (Gemini) - Processing...', 50);
+    onProgress('✨ AI Scan (Gemini) - Processing...', 50, { stage: 'cloud_scan' });
     // Convert blob to base64
     const base64 = await new Promise((resolve) => {
       const reader = new FileReader();
@@ -534,9 +543,14 @@ export async function parseInvoiceFile(file, medicinesList = [], onProgress = ()
     });
     const parsed = await parseInvoiceViaServer(base64, medicinesList, options);
     console.log(`[Invoice Scanner] engine=${parsed.engine || 'gemini'} completed successfully`);
-    onProgress('Complete!', 100);
+    onProgress('Complete!', 100, { stage: 'done' });
     return parsed;
   } catch (err) {
+    // If the caller aborted, do not attempt Tesseract fallback
+    if (options.signal?.aborted) {
+      throw err;
+    }
+
     const isMisconfigured = err.data?.misconfigured || 
       err.status === 404 || 
       err.status === 400 || 
@@ -556,17 +570,23 @@ export async function parseInvoiceFile(file, medicinesList = [], onProgress = ()
       throw new Error(`Cloud scan model misconfigured (${err.message}). Offline OCR fallback disabled.`);
     }
 
+    // FIX A.3: Tesseract fallback: only start if it can finish; give it max 8s, else skip and return failure
     console.warn(`[Invoice Scanner] AI engine failed (${err?.message || 'error'}), falling back to engine=tesseract (local OCR):`, err);
     addScanLog('FALLBACK_TESSERACT', {
       trigger: 'cloud_failure',
       status: err.status || 'unknown',
       reason: err.message || 'Upstream AI error'
     });
-    onProgress('⚠️ Cloud scan unavailable; using offline mode...', 60);
+    onProgress('⚠️ Cloud scan unavailable; using offline mode...', 60, { stage: 'offline_ocr' });
     try {
-      const parsed = await parseInvoiceImage(compressedBlob, medicinesList, (msg, pct) => {
-        onProgress(`⚠️ Cloud scan unavailable; using offline mode - ${msg}`, pct);
+      const ocrPromise = parseInvoiceImage(compressedBlob, medicinesList, (msg, pct) => {
+        onProgress(`⚠️ Cloud scan unavailable; using offline mode - ${msg}`, pct, { stage: 'offline_ocr' });
       });
+      const tesseractTimeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Tesseract timeout: exceeded 8s limit')), 8000)
+      );
+
+      const parsed = await Promise.race([ocrPromise, tesseractTimeout]);
       addScanLog('PARSING', {
         parsed_item_count: parsed.items?.length || 0,
         engine: 'tesseract'
@@ -582,7 +602,8 @@ export async function parseInvoiceFile(file, medicinesList = [], onProgress = ()
         failed_stage: 'LOCAL_OCR_FALLBACK',
         error: localErr.message || String(localErr)
       });
-      throw localErr;
+      // Skip Tesseract and rethrow upstream error so clean honest message displays
+      throw err;
     }
   }
 }

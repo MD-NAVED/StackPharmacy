@@ -150,7 +150,7 @@ export default function Purchases({ initialLines, initialOpen, initialScannedNot
     setScanStatus('Scanning bill with AI…');
     setScanProgressMeta({ page: 0, totalPages: 0, stage: 'init', thumbnails: [] });
 
-    // FIX 4: Client-side 25s timeout + progressive status text
+    // FIX B: Client-side 45s timeout (must exceed server worst case ~20s + margin) + progressive status text
     const scanStartTime = Date.now();
     const elapsedInterval = setInterval(() => {
       const elapsed = Math.floor((Date.now() - scanStartTime) / 1000);
@@ -160,9 +160,18 @@ export default function Purchases({ initialLines, initialOpen, initialScannedNot
       }
     }, 1000);
 
-    // FIX 4: AbortController for 25s client timeout
+    // FIX B: AbortController for 45s client timeout
     const abortController = new AbortController();
-    const clientTimeout = setTimeout(() => abortController.abort(), 25000);
+    const clientTimeout = setTimeout(() => abortController.abort(), 45000);
+
+    let abortListener = null;
+    const abortPromise = new Promise((_, reject) => {
+      if (abortController.signal.aborted) {
+        return reject(new Error('Scan timed out — please try again or use manual entry.'));
+      }
+      abortListener = () => reject(new Error('Scan timed out — please try again or use manual entry.'));
+      abortController.signal.addEventListener('abort', abortListener);
+    });
 
     try {
       let medList = medicines;
@@ -177,15 +186,12 @@ export default function Purchases({ initialLines, initialOpen, initialScannedNot
           if (typeof pct === 'number') setScanProgress(pct);
           if (meta) setScanProgressMeta((prev) => ({ ...prev, ...meta }));
         }, { signal: abortController.signal }),
-        new Promise((_, reject) => {
-          abortController.signal.addEventListener('abort', () =>
-            reject(new Error('Scan timed out — please try again or use manual entry.'))
-          );
-        })
+        abortPromise
       ]);
 
       clearTimeout(clientTimeout);
       clearInterval(elapsedInterval);
+      if (abortListener) abortController.signal.removeEventListener('abort', abortListener);
 
       // FIX 1: REPLACE entire state (head + lines) — no append, no merge
       setHead({
@@ -194,12 +200,12 @@ export default function Purchases({ initialLines, initialOpen, initialScannedNot
         date: parsed.date || todayStr(),
       });
 
-      // Task 5: If scan fails or returns 0 items / unreadable_bill:
+      // If scan returns 0 items or unreadable_bill:
       if (!parsed.items || parsed.items.length === 0 || parsed.error === 'unreadable_bill') {
         setLines([{ ...EMPTY_LINE }]);
         setScannedNotice(false);
         setScanEngine(null);
-        setOpen(true);
+        setOpen(false); // Keep in clean pre-scan state
         setSnack({ severity: 'warning', message: 'Scan failed / bill unreadable — enter details manually' });
         return;
       }
@@ -231,7 +237,13 @@ export default function Purchases({ initialLines, initialOpen, initialScannedNot
     } catch (err) {
       clearTimeout(clientTimeout);
       clearInterval(elapsedInterval);
-      // FIX 1: Replace on error too — no stale items left behind
+      if (abortListener) abortController.signal.removeEventListener('abort', abortListener);
+
+      // FIX B.2: On abort/error: CLOSE the progress dialog immediately
+      setScanBusy(false);
+      setScanElapsed(0);
+
+      // Form stays in clean pre-scan state (do NOT open the modal)
       setHead({
         supplier_name: '',
         invoice_number: '',
@@ -240,8 +252,9 @@ export default function Purchases({ initialLines, initialOpen, initialScannedNot
       setLines([{ ...EMPTY_LINE }]);
       setScannedNotice(false);
       setScanEngine(null);
-      setOpen(true);
-      // FIX 4: Honest failure message
+      setOpen(false);
+
+      // FIX B.2: Honest message
       setSnack({
         severity: 'warning',
         message: 'Scan failed — AI service busy. Please try again in a minute, or use manual entry.',
