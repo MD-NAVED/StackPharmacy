@@ -263,7 +263,7 @@ export async function parseInvoicePDF(
        finalParsed.items.push(...textParsed.items);
     }
     
-    finalParsed.engine = hasGemini ? (geminiEngineName || 'gemini:cloud') : 'tesseract';
+    finalParsed.engine = hasGemini ? (geminiEngineName || 'nvidia:nemotron-3.5-parse') : 'tesseract';
 
     onProgress('Complete!', 100, { page: pdf.numPages, totalPages: pdf.numPages, stage: 'done', thumbnails });
     return finalParsed;

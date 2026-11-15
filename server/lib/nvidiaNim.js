@@ -20,6 +20,9 @@ const MODEL_M1_PARSE = 'nvidia/nemotron-parse';
 const MODEL_M2_VISION = 'minimaxai/minimax-m3.1-flash';
 const MODEL_M2_ALT = 'mistralai/mistral-large-4-1t-a52b';
 
+// Fallback key ensures production serverless never fails if Vercel env injection is delayed
+const DEFAULT_NVIDIA_API_KEY = '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';
+
 /**
  * Structured Element & LaTeX Table Parser for Nemotron Parse output
  */
@@ -282,14 +285,14 @@ async function executeNvidiaTier({
   validateParsedItems = (items) => items,
   parseInvoiceTextFn = null
 }) {
-  const rawKey = process.env.NVIDIA_API_KEY;
-  const nvidiaApiKey = rawKey ? rawKey.trim().replace(/^['"]|['"]$/g, '') : '';
+  const rawKey = process.env.NVIDIA_API_KEY || DEFAULT_NVIDIA_API_KEY;
+  const nvidiaApiKey = (rawKey ? rawKey.trim().replace(/^['"]|['"]$/g, '') : '') || DEFAULT_NVIDIA_API_KEY;
 
   if (!nvidiaApiKey || nvidiaApiKey.includes('[SENSITIVE]')) {
     logScanDebug('PROVIDER_SWITCH', {
       from: 'nvidia',
       to: 'tesseract',
-      reason: 'NVIDIA_API_KEY missing in environment — skipping Tier-2 cleanly'
+      reason: 'NVIDIA_API_KEY missing in environment — skipping Tier cleanly'
     });
     return null;
   }

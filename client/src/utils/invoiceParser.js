@@ -559,7 +559,7 @@ export async function parseInvoiceViaServer(base64Image, medicinesList, options 
   }
   
   return {
-    engine: data.engine || 'gemini:unknown',
+    engine: data.engine || 'nvidia:nemotron-3.5-parse',
     supplier_name: data.distributor || data.supplier_name || '',
     invoice_number: data.bill_no || data.invoice_number || '',
     date: data.date || data.invoice_date || '',

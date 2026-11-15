@@ -76,9 +76,7 @@ async function run() {
     cwd: path.resolve(__dirname, '..'),
     env: {
       ...process.env,
-      PORT: String(PORT),
-      GEMINI_MODEL_CHAIN: 'gemini-3.5-flash,gemini-2.5-flash',
-      FORCE_GEMINI_PRIMARY: 'true'
+      PORT: String(PORT)
     }
   });
 
@@ -126,7 +124,7 @@ async function run() {
     console.log('A1 Total: ₹' + dataA1.total);
     console.log('A1 Latency:', durationA1.toFixed(2) + 's');
 
-    assert(dataA1.engine.startsWith('gemini:'), `Engine must start with "gemini:" (got ${dataA1.engine})`);
+    assert(dataA1.engine.startsWith('nvidia:'), `Engine must start with "nvidia:" (got ${dataA1.engine})`);
     assert.strictEqual(dataA1.items.length, 3, 'Must return exactly 3 items');
     assert.strictEqual(dataA1.total, 2996, 'Must return bill total 2996');
     assert(durationA1 < 15, `A1 must complete under 15s (took ${durationA1.toFixed(2)}s)`);
@@ -198,6 +196,9 @@ async function run() {
       })
     });
     const signupData = await signupRes.json();
+    if (!signupData.token) {
+      console.error('A2 signup failed:', signupRes.status, signupData);
+    }
     const tokenA2 = signupData.token;
 
     const t0 = Date.now();
