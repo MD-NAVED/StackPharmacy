@@ -84,12 +84,12 @@ export const PRIVACY_SECTIONS = [
     intro: 'We are completely transparent about how bill scanning works:',
     items: [
       {
-        heading: 'Google Gemini AI Processing',
-        body: "When you scan a bill, the photo is sent securely to Google's Gemini API so a computer can read the text. It is processed under Google's API terms."
+        heading: 'AI Cloud Processing (Google Gemini & NVIDIA NIM Cloud Backup)',
+        body: "When you scan a bill, the photo is sent securely to Google's Gemini API so a computer can read the text. It is processed under Google's API terms. As an automated cloud backup when primary services are congested, bill photos may also be processed securely via NVIDIA NIM API endpoints under NVIDIA's API terms."
       },
       {
-        heading: 'Immediate Image Discarding (No Permanent Image Storage)',
-        body: 'Our server processes your bill photo in memory only to extract medicine names and numbers. The image is never saved to our database, never written to disk, and is discarded immediately after the items are read.'
+        heading: 'RAM-Only Processing (Immediate Image Discarding)',
+        body: 'Our server processes your bill photo in memory (RAM only) to extract medicine names and numbers. The image is never saved to our database, never written to disk, and is discarded immediately after the items are read.'
       },
       {
         heading: 'You Are Always in Control',

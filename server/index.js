@@ -23,6 +23,7 @@ const {
   importLimiter,
   getRateLimitStatus,
 } = require('./lib/rateLimit');
+const { executeNvidiaTier } = require('./lib/nvidiaNim');
 
 const app = express();
 
@@ -1023,7 +1024,7 @@ const logScanDebug = (stage, details = {}) => {
 };
 
 // ─── MODEL CHAIN (FIX 3): Build ordered fallback chain from ListModels ───
-const PREFERRED_FLASH_MODELS = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.5-flash'];
+const PREFERRED_FLASH_MODELS = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.5-flash', 'gemini-2.5-flash'];
 let geminiModelChain = null; // populated on first scan or boot
 
 const buildModelChain = async (apiKey) => {
@@ -1461,9 +1462,19 @@ const scanInvoiceHandler = async (req, res, next) => {
 
           geminiRes = await makeGeminiRequestForModel(modelName, thisTimeout, chainController.signal);
 
-          if (geminiRes.ok || geminiRes.status === 429) {
+          if (geminiRes.ok) {
             usedModel = modelName;
             break;
+          }
+
+          if (geminiRes.status === 429) {
+            logScanDebug('MODEL_SWITCH', {
+              from_model: modelName,
+              to_model: modelChain[ci + 1] || 'nvidia-tier2',
+              reason: `HTTP 429: Rate limit or quota exceeded for ${modelName}`
+            });
+            geminiRes = null;
+            break; // Break attempt loop, try next model in modelChain
           }
 
           // Check for 503 / UNAVAILABLE
@@ -1520,7 +1531,7 @@ const scanInvoiceHandler = async (req, res, next) => {
         break;
       }
 
-      if (geminiRes && (geminiRes.ok || geminiRes.status === 429)) {
+      if (geminiRes && geminiRes.ok) {
         usedModel = modelName;
         break;
       }
@@ -1528,37 +1539,43 @@ const scanInvoiceHandler = async (req, res, next) => {
 
     clearTimeout(chainTimer);
 
-    if (!geminiRes && (chainController.signal.aborted || Date.now() - startTime >= totalBudgetMs)) {
-      const latency_ms = Date.now() - startTime;
-      logScanDebug('FAILURE', { failed_stage: 'ALL_MODELS_EXHAUSTED', latency_ms, models_tried: modelChain.length, reason: 'CHAIN_BUDGET_EXCEEDED' });
-      return res.status(503).json({
-        error: 'Scan failed — AI service busy. Please try again in a minute, or use manual entry.',
-        stage: 'ALL_MODELS_EXHAUSTED',
-        latency_ms
-      });
-    }
+    // If Gemini did not succeed, hop to NVIDIA NIM Tier-2 before Tesseract fallback
+    if (!geminiRes || !geminiRes.ok) {
+      const failReason = !geminiRes
+        ? (chainController.signal.aborted ? 'CHAIN_BUDGET_EXCEEDED' : (lastNetworkError?.message || 'ALL_MODELS_EXHAUSTED'))
+        : `HTTP ${geminiRes.status}`;
 
-    if (!geminiRes && lastNetworkError) {
+      logScanDebug('PROVIDER_SWITCH', {
+        from: 'gemini',
+        to: 'nvidia:nemotron-3.5-parse',
+        reason: failReason
+      });
+
+      // Execute NVIDIA Tier-2 (M1 parse 8s -> M2 vision 10s)
+      const nvidiaResult = await executeNvidiaTier({
+        base64Data,
+        prompt,
+        storeId: req.storeId,
+        pool,
+        startTime,
+        maxTotalBudgetMs: 36000,
+        logScanDebug,
+        validateParsedItems
+      });
+
+      if (nvidiaResult) {
+        return res.json(nvidiaResult);
+      }
+
+      // If NVIDIA tier exhausted or skipped (key missing or 429):
       const latency_ms = Date.now() - startTime;
       logScanDebug('FAILURE', {
-        failed_stage: 'UPSTREAM_NETWORK',
-        error: lastNetworkError.name || 'NetworkError',
-        message: lastNetworkError.message,
-        latency_ms
+        failed_stage: 'ALL_MODELS_EXHAUSTED',
+        latency_ms,
+        models_tried: modelChain.length,
+        nvidia_tried: true,
+        reason: 'CLOUD_PROVIDERS_EXHAUSTED'
       });
-      if (typeof Sentry !== 'undefined') {
-        Sentry.captureException(lastNetworkError);
-      }
-      return res.status(503).json({
-        error: 'Scan failed — AI service busy. Please try again in a minute, or use manual entry.',
-        stage: 'UPSTREAM_NETWORK',
-        latency_ms
-      });
-    }
-
-    if (!geminiRes) {
-      const latency_ms = Date.now() - startTime;
-      logScanDebug('FAILURE', { failed_stage: 'ALL_MODELS_EXHAUSTED', latency_ms, models_tried: modelChain.length });
       return res.status(503).json({
         error: 'Scan failed — AI service busy. Please try again in a minute, or use manual entry.',
         stage: 'ALL_MODELS_EXHAUSTED',
@@ -1567,42 +1584,6 @@ const scanInvoiceHandler = async (req, res, next) => {
     }
 
     const latency_ms = Date.now() - startTime;
-
-    if (geminiRes.status === 429) {
-      logScanDebug('FAILURE', { failed_stage: 'RATE_LIMIT', status: 429, latency_ms });
-      return res.status(503).json({
-        error: 'AI quota exceeded — thodi der me try karo',
-        stage: 'RATE_LIMIT',
-        status: 429,
-        latency_ms
-      });
-    }
-    
-    if (!geminiRes.ok) {
-      const status = geminiRes.status;
-      const errorText = await geminiRes.text().catch(() => 'Unknown upstream error');
-      const isConfigError = status === 404 || status === 400;
-      logScanDebug('FAILURE', {
-        failed_stage: isConfigError ? 'MODEL_CONFIG_ERROR' : 'UPSTREAM_API',
-        status,
-        latency_ms,
-        error: errorText.slice(0, 500)
-      });
-      if (typeof Sentry !== 'undefined' && status >= 500) {
-        Sentry.captureMessage(`[Gemini] API upstream error ${status}: ${errorText}`);
-      }
-      return res.status(isConfigError ? 500 : 502).json({
-        error: isConfigError
-          ? `Cloud model '${usedModel}' rejected with HTTP ${status}: model misconfigured or decommissioned.`
-          : 'Scan failed — AI service busy. Please try again in a minute, or use manual entry.',
-        stage: isConfigError ? 'MODEL_CONFIG_ERROR' : 'UPSTREAM_API',
-        status,
-        misconfigured: isConfigError,
-        latency_ms,
-        raw_error: errorText.slice(0, 1000)
-      });
-    }
-
     const resJson = await geminiRes.json();
     let rawText = resJson.candidates?.[0]?.content?.parts?.[0]?.text || '';
     

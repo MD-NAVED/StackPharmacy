@@ -277,11 +277,14 @@ export default function Purchases({ initialLines, initialOpen, initialScannedNot
 
       // FIX 1: Engine truth — pass through exactly what server/fallback reported
       const isFallback = parsed.engine && (parsed.engine.includes('fallback') || parsed.engine.includes('tesseract'));
+      const isNvidia = parsed.engine && parsed.engine.startsWith('nvidia:');
       setScannedNotice(true);
       setScanEngine(parsed.engine || 'gemini:unknown');
       setOpen(true);
       if (isFallback) {
         setSnack({ severity: 'warning', message: 'Cloud scan unavailable; using offline mode. Review items carefully.' });
+      } else if (isNvidia) {
+        setSnack({ severity: 'info', message: 'Extracted by AI (cloud backup) — please verify before saving.' });
       } else {
         setSnack({ severity: 'success', message: 'Invoice scanned! Pre-filled purchase details below for review.' });
       }
@@ -727,11 +730,19 @@ export default function Purchases({ initialLines, initialOpen, initialScannedNot
         <DialogTitle>New Purchase — add stock by batch</DialogTitle>
         <DialogContent sx={{ pt: '8px !important' }}>
           {scannedNotice && (
-            <Alert severity={(scanEngine && scanEngine.includes('gemini')) ? 'info' : 'warning'} sx={{ mb: 2, mt: 1 }}>
+            <Alert severity={
+              (scanEngine && scanEngine.includes('gemini')) ? 'info' :
+              (scanEngine && scanEngine.startsWith('nvidia:')) ? 'info' : 'warning'
+            } sx={{ mb: 2, mt: 1 }}>
               {(scanEngine && scanEngine.includes('gemini')) ? (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                   <Chip size="small" label={`✨ ${scanEngine}`} sx={{ bgcolor: '#f3e5f5', color: '#7b1fa2', fontWeight: 700 }} />
                   <span>Extracted by Gemini (cloud) — please verify before saving.</span>
+                </Box>
+              ) : (scanEngine && scanEngine.startsWith('nvidia:')) ? (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                  <Chip size="small" label={`🛡️ ${scanEngine}`} sx={{ bgcolor: '#e8f5e9', color: '#2e7d32', fontWeight: 700 }} />
+                  <span>Extracted by AI (cloud backup) — please verify before saving.</span>
                 </Box>
               ) : (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>

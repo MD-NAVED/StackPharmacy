@@ -100,6 +100,10 @@ assert(
   cleanHtml.includes('The image is never saved to our database, never written to disk, and is discarded immediately after the items are read.'),
   'Must state that bill photos are discarded in memory and not permanently stored'
 );
+assert(
+  cleanHtml.includes('NVIDIA NIM'),
+  'Must disclose NVIDIA NIM cloud backup processing'
+);
 console.log('  PASS: Google Gemini API disclosure and memory-only bill image discard verified');
 
 // Section 4: What We Never Do (Commitments)

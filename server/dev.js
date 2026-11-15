@@ -22,6 +22,7 @@ const ENV_KEYS = [
   'CRON_SECRET',
   'GEMINI_API_KEY',
   'GEMINI_MODEL',
+  'NVIDIA_API_KEY',
 ];
 function readDotEnv() {
   const values = {};
