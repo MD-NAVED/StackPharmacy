@@ -63,7 +63,7 @@ function PurchaseCard({ row, isOwner, onOpen }) {
   );
 }
 
-export default function Purchases({ initialLines, initialOpen, initialScannedNotice, disablePortal } = {}) {
+export default function Purchases({ initialLines, initialOpen, initialScannedNotice, initialHead, disablePortal } = {}) {
   const { user } = useAuth();
   const isOwner = user?.role === 'owner';
   const isMobile = useMediaQuery('(max-width:900px)');
@@ -74,7 +74,7 @@ export default function Purchases({ initialLines, initialOpen, initialScannedNot
   const [open, setOpen] = useState(initialOpen !== undefined ? initialOpen : false);
   const [busy, setBusy] = useState(false);
   const [snack, setSnack] = useState(null);
-  const [head, setHead] = useState({ supplier_name: '', invoice_number: '', date: todayStr() });
+  const [head, setHead] = useState(initialHead !== undefined ? initialHead : { supplier_name: '', invoice_number: '', date: todayStr() });
   const [lines, setLines] = useState(initialLines !== undefined ? initialLines : [{ ...EMPTY_LINE }]);
   const [detailId, setDetailId] = useState(null);       // purchase being viewed
   const [detail, setDetail] = useState(null);           // loaded detail payload
@@ -199,6 +199,57 @@ export default function Purchases({ initialLines, initialOpen, initialScannedNot
         invoice_number: parsed.invoice_number || '',
         date: parsed.date || todayStr(),
       });
+
+      // QUALITY-GATE THE OFFLINE FALLBACK:
+      // RULE: After a tesseract-engine scan, if more than half the items have
+      // status 'needs_fix' OR the items-total mismatches the bill total by >2%:
+      // 1. DISCARD the parsed line items (never render garbage rows).
+      // 2. KEEP the header fields that passed validation (supplier name, invoice number, date) and prefill them in the form.
+      // 3. Open the existing 3-field manual entry path with the honest message:
+      //    "Couldn't read this bill reliably. Please enter items manually — supplier details filled from scan."
+      const isTesseract = parsed.engine && (
+        parsed.engine === 'tesseract' ||
+        parsed.engine.includes('tesseract') ||
+        parsed.engine.includes('fallback')
+      );
+
+      const rawItems = parsed.items || [];
+      const needsFixCount = rawItems.filter((it) =>
+        it.status === 'needs_fix' ||
+        it.serverStatus === 'needs_fix' ||
+        (it.issues && it.issues.length > 0) ||
+        (it.serverIssues && it.serverIssues.length > 0)
+      ).length;
+      const moreThanHalfNeedsFix = rawItems.length > 0 && needsFixCount > rawItems.length / 2;
+
+      const itemsTotal = rawItems.reduce(
+        (sum, it) => sum + (Number(it.amount) || ((Number(it.quantity) || 0) * (Number(it.buy_price) || 0))),
+        0
+      );
+      const billTotal = Number(parsed.total) || 0;
+      const totalMismatch = billTotal > 0 && Math.abs(itemsTotal - billTotal) / billTotal > 0.02;
+
+      const isGarbageTesseract = isTesseract && (parsed.qualityGated || moreThanHalfNeedsFix || totalMismatch);
+
+      if (isGarbageTesseract) {
+        // 1. DISCARD the parsed line items (never render garbage rows)
+        setLines([]);
+        // 2. KEEP header fields that passed validation
+        setHead({
+          supplier_name: parsed.supplier_name || '',
+          invoice_number: parsed.invoice_number || '',
+          date: parsed.date || todayStr(),
+        });
+        setScannedNotice(false);
+        setScanEngine(null);
+        // 3. Open the existing 3-field manual entry path with honest message
+        setOpen(true);
+        setSnack({
+          severity: 'warning',
+          message: "Couldn't read this bill reliably. Please enter items manually — supplier details filled from scan.",
+        });
+        return;
+      }
 
       // If scan returns 0 items or unreadable_bill:
       if (!parsed.items || parsed.items.length === 0 || parsed.error === 'unreadable_bill') {

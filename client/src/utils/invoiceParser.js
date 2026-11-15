@@ -274,6 +274,16 @@ export function parseInvoiceText(rawText, medicinesList = []) {
     supplier_name = (pharmaLine || headerCandidates[0]).replace(/^[^A-Za-z0-9]+/, '');
   }
 
+  // 3b. Extract Bill Total (if present)
+  let total = 0;
+  for (const line of lines) {
+    const totalMatch = line.match(/\b(?:grand\s*total|net\s*(?:amount|payable|total)|bill\s*amount|total\s*(?:amount)?)\s*[:\.-]?\s*(?:₹|rs\.?)?\s*(\d+(?:\.\d+)?)/i);
+    if (totalMatch) {
+      total = parseFloat(totalMatch[1]);
+      break;
+    }
+  }
+
   // 4. Line Items Extraction
   for (const line of lines) {
     const lower = line.toLowerCase();
@@ -334,11 +344,35 @@ export function parseInvoiceText(rawText, medicinesList = []) {
         }
       }
 
+      // Validate parsed item quality (status: 'ready' | 'needs_fix')
+      const issues = [];
+      const qNum = Number(quantity);
+      if (!quantity || !Number.isInteger(qNum) || qNum < 1 || qNum > 5000) {
+        issues.push('quantity out of range (1-5000)');
+      }
+      const pNum = Number(buyPrice);
+      if (!buyPrice || isNaN(pNum) || pNum <= 0 || pNum > 5000) {
+        issues.push('rate out of range (0-5000)');
+      }
+      if (!expStr) {
+        issues.push('missing or invalid expiry');
+      } else {
+        const d = new Date(expStr);
+        if (d < new Date()) issues.push('expiry date is in the past');
+      }
+      if (!isConfident && (!candidates || candidates.length === 0)) {
+        issues.push('unmatched medicine');
+      }
+
+      const itemStatus = issues.length > 0 ? 'needs_fix' : 'ready';
+      const itemAmount = (Number(quantity) || 0) * (Number(buyPrice) || 0);
+
       // NO SILENT DEFAULTS:
       // If confident, assign medicine_id. If not confident, leave empty '' and supply candidates.
       // batch_number, expiry_date, quantity, buy_price are left empty if unextracted.
       parsedItems.push({
         medicine_id: isConfident ? topMatch.id : '',
+        name: isConfident ? topMatch.name : (topMatch?.name || ''),
         matchedName: isConfident ? `${topMatch.name} (${topMatch.company})` : '',
         candidates: candidates.map((c) => ({
           id: c.id,
@@ -351,6 +385,12 @@ export function parseInvoiceText(rawText, medicinesList = []) {
         expiry_date: expStr || '',
         quantity: quantity || '',
         buy_price: buyPrice || '',
+        amount: itemAmount,
+        status: itemStatus,
+        issues,
+        serverStatus: itemStatus,
+        serverIssues: issues,
+        hasServerIssues: issues.length > 0,
         rawLine: line,
       });
     }
@@ -361,8 +401,57 @@ export function parseInvoiceText(rawText, medicinesList = []) {
     supplier_name,
     invoice_number,
     date,
+    total,
     items: parsedItems,
   };
+}
+
+/**
+ * Quality-gate offline Tesseract OCR results.
+ * RULE: After a tesseract-engine scan, if more than half the items have
+ * status 'needs_fix' OR the items-total mismatches the bill total by >2%:
+ * 1. DISCARD the parsed line items (items: [])
+ * 2. KEEP the header fields that passed validation (supplier_name, invoice_number, date)
+ * 3. Mark qualityGated: true
+ */
+export function qualityGateTesseractResult(parsed) {
+  if (!parsed) return parsed;
+  const isTesseract = !parsed.engine || (
+    parsed.engine === 'tesseract' ||
+    parsed.engine.includes('tesseract') ||
+    parsed.engine.includes('fallback')
+  );
+  if (!isTesseract) return parsed;
+
+  const items = parsed.items || [];
+  if (items.length === 0) return parsed;
+
+  const needsFixCount = items.filter((it) =>
+    it.status === 'needs_fix' ||
+    it.serverStatus === 'needs_fix' ||
+    (it.issues && it.issues.length > 0) ||
+    (it.serverIssues && it.serverIssues.length > 0)
+  ).length;
+
+  const moreThanHalfNeedsFix = needsFixCount > items.length / 2;
+
+  const itemsTotal = items.reduce(
+    (sum, it) => sum + (Number(it.amount) || ((Number(it.quantity) || 0) * (Number(it.buy_price) || 0))),
+    0
+  );
+  const billTotal = Number(parsed.total) || 0;
+  const totalMismatch = billTotal > 0 && Math.abs(itemsTotal - billTotal) / billTotal > 0.02;
+
+  if (moreThanHalfNeedsFix || totalMismatch) {
+    return {
+      ...parsed,
+      qualityGated: true,
+      gateReason: moreThanHalfNeedsFix ? 'more_than_half_needs_fix' : 'total_mismatch',
+      items: [], // DISCARD the parsed line items
+    };
+  }
+
+  return parsed;
 }
 
 /**
@@ -587,15 +676,20 @@ export async function parseInvoiceFile(file, medicinesList = [], onProgress = ()
       );
 
       const parsed = await Promise.race([ocrPromise, tesseractTimeout]);
+      const gated = qualityGateTesseractResult(parsed);
       addScanLog('PARSING', {
-        parsed_item_count: parsed.items?.length || 0,
+        parsed_item_count: gated.items?.length || 0,
+        original_item_count: parsed.items?.length || 0,
+        quality_gated: !!gated.qualityGated,
         engine: 'tesseract'
       });
-      console.log('[Invoice Scanner] engine=tesseract (fallback) completed successfully');
+      console.log(`[Invoice Scanner] engine=tesseract (fallback) completed successfully (qualityGated=${!!gated.qualityGated})`);
       return {
-        ...parsed,
+        ...gated,
         engine: 'tesseract',
-        warning: 'Cloud scan unavailable; using offline mode'
+        warning: gated.qualityGated
+          ? "Couldn't read this bill reliably. Please enter items manually — supplier details filled from scan."
+          : 'Cloud scan unavailable; using offline mode'
       };
     } catch (localErr) {
       addScanLog('FAILURE', {
