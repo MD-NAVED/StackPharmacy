@@ -34,6 +34,7 @@ export default function MobileReviewList({ lines, setLines, setLine, medicines, 
       if (!/^\d{4}-\d{2}-\d{2}$/.test(l.expiry_date)) errors++;
       if (!(Number(l.quantity) > 0)) errors++;
       if (!(Number(l.buy_price) >= 0 && l.buy_price !== '')) errors++;
+      if (l.serverStatus === 'needs_fix' || (l.serverIssues && l.serverIssues.length > 0)) errors++;
 
       if (errors > 0) {
         status = 'needs-fix';
@@ -105,10 +106,10 @@ export default function MobileReviewList({ lines, setLines, setLine, medicines, 
               Total: {fmt(totalAmount)}
             </Typography>
             {(scanEngine && scanEngine.includes('gemini')) && (
-              <Chip size="small" label="✨ AI Scan (Gemini)" sx={{ bgcolor: '#f3e5f5', color: '#7b1fa2', fontWeight: 700, height: 22, fontSize: 10 }} />
+              <Chip size="small" label={`✨ ${scanEngine}`} sx={{ bgcolor: '#f3e5f5', color: '#7b1fa2', fontWeight: 700, height: 22, fontSize: 10 }} />
             )}
             {(scanEngine && (scanEngine.includes('tesseract') || scanEngine.includes('fallback'))) && (
-              <Chip size="small" label="⚠️ Offline OCR Fallback" sx={{ bgcolor: '#fff3e0', color: '#e65100', fontWeight: 600, height: 22, fontSize: 10 }} />
+              <Chip size="small" label="⚠️ Offline OCR (tesseract)" sx={{ bgcolor: '#fff3e0', color: '#e65100', fontWeight: 600, height: 22, fontSize: 10 }} />
             )}
           </Box>
           {(counts['needs-fix'] > 0 || counts['verify'] > 0) && (
@@ -168,6 +169,11 @@ export default function MobileReviewList({ lines, setLines, setLine, medicines, 
                   <Typography variant="caption" color="text.secondary">
                     {item.batch_number || '-'} | {item.quantity || 0} qty @ ₹{item.buy_price || 0}
                   </Typography>
+                  {item.serverIssues && item.serverIssues.length > 0 && (
+                    <Typography variant="caption" sx={{ color: 'error.main', display: 'block', fontWeight: 600 }}>
+                      ⚠️ {item.serverIssues[0]}
+                    </Typography>
+                  )}
                 </Box>
                 <Typography variant="body2" sx={{ fontWeight: 'bold', mx: 1 }}>
                   {fmt(lineTotal(item))}
@@ -178,6 +184,18 @@ export default function MobileReviewList({ lines, setLines, setLine, medicines, 
               {/* Expanded Form (Existing UI) */}
               <Collapse in={isExpanded}>
                 <Box sx={{ p: 2, pt: 0, borderTop: '1px solid #eee' }}>
+                  {item.serverIssues && item.serverIssues.length > 0 && (
+                    <Box sx={{ mb: 1.5, mt: 1, p: 1, bgcolor: '#fdeded', borderRadius: 1, border: '1px solid #ef5350' }}>
+                      <Typography variant="caption" sx={{ color: '#d32f2f', fontWeight: 700, display: 'block', mb: 0.5 }}>
+                        ⚠️ Sanity Check Issues:
+                      </Typography>
+                      {item.serverIssues.map((iss, issIdx) => (
+                        <Typography key={issIdx} variant="caption" sx={{ color: '#c62828', display: 'block' }}>
+                          • {iss}
+                        </Typography>
+                      ))}
+                    </Box>
+                  )}
                   <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5, mt: 1 }}>
                     <Typography variant="subtitle2" sx={{ flexGrow: 1 }}>Edit Details</Typography>
                     <IconButton size="small" color="error" disabled={lines.length === 1}

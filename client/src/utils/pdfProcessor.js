@@ -206,6 +206,7 @@ export async function parseInvoicePDF(
     // Merge logic
     let finalParsed = { supplier_name: '', invoice_number: '', date: '', items: [] };
     let hasGemini = false;
+    let geminiEngineName = null;
     let combinedText = '';
 
     for (const res of pageTexts) {
@@ -213,6 +214,7 @@ export async function parseInvoicePDF(
           combinedText += res + '\n--- PAGE BREAK ---\n';
        } else {
           hasGemini = true;
+          if (res.engine) geminiEngineName = res.engine;
           if (!finalParsed.supplier_name && res.supplier_name) finalParsed.supplier_name = res.supplier_name;
           if (!finalParsed.invoice_number && res.invoice_number) finalParsed.invoice_number = res.invoice_number;
           if (!finalParsed.date && res.date) finalParsed.date = res.date;
@@ -228,7 +230,7 @@ export async function parseInvoicePDF(
        finalParsed.items.push(...textParsed.items);
     }
     
-    if (hasGemini) finalParsed.engine = 'gemini';
+    finalParsed.engine = hasGemini ? (geminiEngineName || 'gemini:cloud') : 'tesseract';
 
     onProgress('Complete!', 100, { page: pdf.numPages, totalPages: pdf.numPages, stage: 'done', thumbnails });
     return finalParsed;

@@ -93,6 +93,7 @@ export default function Purchases({ initialLines, initialOpen, initialScannedNot
   const [scanStatus, setScanStatus] = useState('');
   const [scannedNotice, setScannedNotice] = useState(initialScannedNotice !== undefined ? initialScannedNotice : false);
   const [scanEngine, setScanEngine] = useState(null);
+  const [scanElapsed, setScanElapsed] = useState(0); // FIX 4: track elapsed seconds
   const [infoOpen, setInfoOpen] = useState(false);
   const [dupeDialog, setDupeDialog] = useState(null);
   const cameraInputRef = useRef(null);
@@ -137,10 +138,31 @@ export default function Purchases({ initialLines, initialOpen, initialScannedNot
     const file = e.target.files && e.target.files[0];
     if (!file) return;
 
+    // FIX 1: Clear previous scan state COMPLETELY before starting new scan
+    setLines([{ ...EMPTY_LINE }]);
+    setHead({ supplier_name: '', invoice_number: '', date: todayStr() });
+    setScannedNotice(false);
+    setScanEngine(null);
+    setScanElapsed(0);
+
     setScanBusy(true);
     setScanProgress(5);
-    setScanStatus('Reading invoice file…');
+    setScanStatus('Scanning bill with AI…');
     setScanProgressMeta({ page: 0, totalPages: 0, stage: 'init', thumbnails: [] });
+
+    // FIX 4: Client-side 25s timeout + progressive status text
+    const scanStartTime = Date.now();
+    const elapsedInterval = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - scanStartTime) / 1000);
+      setScanElapsed(elapsed);
+      if (elapsed >= 10) {
+        setScanStatus('AI is busy, switching backup engine…');
+      }
+    }, 1000);
+
+    // FIX 4: AbortController for 25s client timeout
+    const abortController = new AbortController();
+    const clientTimeout = setTimeout(() => abortController.abort(), 25000);
 
     try {
       let medList = medicines;
@@ -149,12 +171,23 @@ export default function Purchases({ initialLines, initialOpen, initialScannedNot
         setMedicines(medList);
       }
 
-      const parsed = await parseInvoiceFile(file, medList, (status, pct, meta) => {
-        setScanStatus(status);
-        if (typeof pct === 'number') setScanProgress(pct);
-        if (meta) setScanProgressMeta((prev) => ({ ...prev, ...meta }));
-      });
+      const parsed = await Promise.race([
+        parseInvoiceFile(file, medList, (status, pct, meta) => {
+          setScanStatus(status);
+          if (typeof pct === 'number') setScanProgress(pct);
+          if (meta) setScanProgressMeta((prev) => ({ ...prev, ...meta }));
+        }, { signal: abortController.signal }),
+        new Promise((_, reject) => {
+          abortController.signal.addEventListener('abort', () =>
+            reject(new Error('Scan timed out — please try again or use manual entry.'))
+          );
+        })
+      ]);
 
+      clearTimeout(clientTimeout);
+      clearInterval(elapsedInterval);
+
+      // FIX 1: REPLACE entire state (head + lines) — no append, no merge
       setHead({
         supplier_name: parsed.supplier_name || '',
         invoice_number: parsed.invoice_number || '',
@@ -163,11 +196,6 @@ export default function Purchases({ initialLines, initialOpen, initialScannedNot
 
       // Task 5: If scan fails or returns 0 items / unreadable_bill:
       if (!parsed.items || parsed.items.length === 0 || parsed.error === 'unreadable_bill') {
-        setHead({
-          supplier_name: parsed?.supplier_name || '',
-          invoice_number: parsed?.invoice_number || '',
-          date: parsed?.date || todayStr(),
-        });
         setLines([{ ...EMPTY_LINE }]);
         setScannedNotice(false);
         setScanEngine(null);
@@ -176,12 +204,7 @@ export default function Purchases({ initialLines, initialOpen, initialScannedNot
         return;
       }
 
-      setHead({
-        supplier_name: parsed.supplier_name || '',
-        invoice_number: parsed.invoice_number || '',
-        date: parsed.date || todayStr(),
-      });
-
+      // FIX 1: Full replace of lines
       setLines(parsed.items.map((it) => ({
         medicine_id: it.medicine_id || null,
         batch_number: it.batch_number || defaultBatch(),
@@ -190,11 +213,15 @@ export default function Purchases({ initialLines, initialOpen, initialScannedNot
         buy_price: it.buy_price || '',
         candidates: it.candidates || [],
         lowConfidence: it.lowConfidence || false,
+        serverStatus: it.serverStatus || 'ready',
+        serverIssues: it.serverIssues || [],
+        hasServerIssues: it.hasServerIssues || false,
       })));
 
+      // FIX 1: Engine truth — pass through exactly what server/fallback reported
       const isFallback = parsed.engine && (parsed.engine.includes('fallback') || parsed.engine.includes('tesseract'));
       setScannedNotice(true);
-      setScanEngine(parsed.engine || 'gemini-3.8-flash');
+      setScanEngine(parsed.engine || 'gemini:unknown');
       setOpen(true);
       if (isFallback) {
         setSnack({ severity: 'warning', message: 'Cloud scan unavailable; using offline mode. Review items carefully.' });
@@ -202,6 +229,9 @@ export default function Purchases({ initialLines, initialOpen, initialScannedNot
         setSnack({ severity: 'success', message: 'Invoice scanned! Pre-filled purchase details below for review.' });
       }
     } catch (err) {
+      clearTimeout(clientTimeout);
+      clearInterval(elapsedInterval);
+      // FIX 1: Replace on error too — no stale items left behind
       setHead({
         supplier_name: '',
         invoice_number: '',
@@ -211,9 +241,14 @@ export default function Purchases({ initialLines, initialOpen, initialScannedNot
       setScannedNotice(false);
       setScanEngine(null);
       setOpen(true);
-      setSnack({ severity: 'warning', message: 'Scan failed / bill unreadable — enter details manually' });
+      // FIX 4: Honest failure message
+      setSnack({
+        severity: 'warning',
+        message: 'Scan failed — AI service busy. Please try again in a minute, or use manual entry.',
+      });
     } finally {
       setScanBusy(false);
+      setScanElapsed(0);
       if (cameraInputRef.current) cameraInputRef.current.value = '';
       if (fileUploadRef.current) fileUploadRef.current.value = '';
     }
@@ -623,18 +658,6 @@ export default function Purchases({ initialLines, initialOpen, initialScannedNot
         </DialogActions>
       </Dialog>
 
-      {/* Invoice Scanning Progress Dialog */}
-      <Dialog open={scanBusy} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ textAlign: 'center', pb: 1 }}>Scanning Invoice…</DialogTitle>
-        <DialogContent sx={{ textAlign: 'center', py: 3 }}>
-          <CircularProgress size={48} sx={{ mb: 2, color: '#7b1fa2' }} />
-          <Typography variant="body1" sx={{ fontWeight: 600, mb: 1 }}>{scanStatus}</Typography>
-          <LinearProgress variant="determinate" value={scanProgress} sx={{ height: 8, borderRadius: 4, bgcolor: '#f3e5f5', '& .MuiLinearProgress-bar': { bgcolor: '#7b1fa2' } }} />
-          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-            Extracting supplier, medicines, batch numbers & prices…
-          </Typography>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="md" fullWidth fullScreen={isMobile} disablePortal={disablePortal}>
         <DialogTitle>New Purchase — add stock by batch</DialogTitle>
@@ -643,13 +666,13 @@ export default function Purchases({ initialLines, initialOpen, initialScannedNot
             <Alert severity={(scanEngine && scanEngine.includes('gemini')) ? 'info' : 'warning'} sx={{ mb: 2, mt: 1 }}>
               {(scanEngine && scanEngine.includes('gemini')) ? (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                  <Chip size="small" label="✨ AI Scan (Gemini)" sx={{ bgcolor: '#f3e5f5', color: '#7b1fa2', fontWeight: 700 }} />
-                  <span><b>AI-Powered Extraction</b>: High-accuracy extraction complete. Please review extracted items before saving.</span>
+                  <Chip size="small" label={`✨ ${scanEngine}`} sx={{ bgcolor: '#f3e5f5', color: '#7b1fa2', fontWeight: 700 }} />
+                  <span>Extracted by Gemini (cloud) — please verify before saving.</span>
                 </Box>
               ) : (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                  <Chip size="small" label="⚠️ Offline OCR Fallback" sx={{ bgcolor: '#fff3e0', color: '#e65100', fontWeight: 700 }} />
-                  <span><b>Cloud scan unavailable; using offline mode</b>: Local OCR may miss small or faded text. Empty or low-confidence fields are highlighted in red and must be verified before saving.</span>
+                  <Chip size="small" label="⚠️ Offline OCR (tesseract)" sx={{ bgcolor: '#fff3e0', color: '#e65100', fontWeight: 700 }} />
+                  <span>Offline OCR used — fields may be wrong. Verify carefully.</span>
                 </Box>
               )}
             </Alert>

@@ -373,15 +373,21 @@ export function parseInvoiceText(rawText, medicinesList = []) {
 /**
  * Sends image to the Gemini Vision server endpoint.
  */
-export async function parseInvoiceViaServer(base64Image, medicinesList) {
+export async function parseInvoiceViaServer(base64Image, medicinesList, options = {}) {
   const startTime = Date.now();
   let data;
+  const internalController = new AbortController();
+  const timeoutId = setTimeout(() => internalController.abort(), 25000);
+  const signal = options.signal || internalController.signal;
   try {
     data = await api('/api/purchases/scan-invoice', {
       method: 'POST',
       body: { image_base64: base64Image },
+      signal,
     });
+    clearTimeout(timeoutId);
   } catch (err) {
+    clearTimeout(timeoutId);
     const latency_ms = Date.now() - startTime;
     addScanLog('FAILURE', {
       failed_stage: 'API_CALL',
@@ -413,6 +419,11 @@ export async function parseInvoiceViaServer(base64Image, medicinesList) {
       const rateVal = item.rate !== undefined && item.rate !== null ? item.rate : item.buy_price;
       const rateStr = rateVal !== null && rateVal !== undefined ? String(rateVal) : '';
 
+      // FIX 2: Pass through server-side validation status and issues
+      const serverStatus = item.status; // 'ready' | 'needs_fix'
+      const serverIssues = Array.isArray(item.issues) ? item.issues : [];
+      const hasServerIssues = serverStatus === 'needs_fix' && serverIssues.length > 0;
+
       return {
         medicine_id: isConfident ? topMatch.id : '',
         name: itemName,
@@ -429,7 +440,10 @@ export async function parseInvoiceViaServer(base64Image, medicinesList) {
         quantity: qtyStr,
         free_quantity: item.free_quantity !== null && item.free_quantity !== undefined ? String(item.free_quantity) : '',
         buy_price: rateStr,
-        rawLine: `${itemName} ${item.batch_number || ''} ${item.expiry || ''} ${qtyStr} ${rateStr}`.trim()
+        rawLine: `${itemName} ${item.batch_number || ''} ${item.expiry || ''} ${qtyStr} ${rateStr}`.trim(),
+        serverStatus: serverStatus || 'ready',
+        serverIssues,
+        hasServerIssues
       };
     });
 
@@ -447,7 +461,7 @@ export async function parseInvoiceViaServer(base64Image, medicinesList) {
   }
   
   return {
-    engine: data.engine || 'gemini-3.8-flash',
+    engine: data.engine || 'gemini:unknown',
     supplier_name: data.distributor || data.supplier_name || '',
     invoice_number: data.bill_no || data.invoice_number || '',
     date: data.date || data.invoice_date || '',
@@ -488,7 +502,7 @@ export async function parseInvoiceImage(imageFile, medicinesList = [], onProgres
  * Unified router for invoice files (Camera, Gallery images, and PDF uploads).
  * Dispatches to parseInvoicePDF for PDFs or parseInvoiceImage for standard image formats.
  */
-export async function parseInvoiceFile(file, medicinesList = [], onProgress = () => {}) {
+export async function parseInvoiceFile(file, medicinesList = [], onProgress = () => {}, options = {}) {
   if (!file) {
     addScanLog('FAILURE', { failed_stage: 'FILE_SELECTION', error: 'No file provided' });
     throw new Error('No file provided for scanning');
@@ -503,7 +517,7 @@ export async function parseInvoiceFile(file, medicinesList = [], onProgress = ()
   const isPdf = file.type === 'application/pdf' || String(file.name || '').toLowerCase().endsWith('.pdf');
   if (isPdf) {
     const { parseInvoicePDF } = await import('./pdfProcessor.js');
-    return parseInvoicePDF(file, medicinesList, onProgress);
+    return parseInvoicePDF(file, medicinesList, onProgress, options);
   }
 
   // Regular Image Flow
@@ -518,8 +532,8 @@ export async function parseInvoiceFile(file, medicinesList = [], onProgress = ()
       reader.onloadend = () => resolve(reader.result);
       reader.readAsDataURL(compressedBlob);
     });
-    const parsed = await parseInvoiceViaServer(base64, medicinesList);
-    console.log(`[Invoice Scanner] engine=${parsed.engine || 'gemini-3.8-flash'} completed successfully`);
+    const parsed = await parseInvoiceViaServer(base64, medicinesList, options);
+    console.log(`[Invoice Scanner] engine=${parsed.engine || 'gemini'} completed successfully`);
     onProgress('Complete!', 100);
     return parsed;
   } catch (err) {
@@ -555,12 +569,12 @@ export async function parseInvoiceFile(file, medicinesList = [], onProgress = ()
       });
       addScanLog('PARSING', {
         parsed_item_count: parsed.items?.length || 0,
-        engine: 'tesseract-fallback'
+        engine: 'tesseract'
       });
       console.log('[Invoice Scanner] engine=tesseract (fallback) completed successfully');
       return {
         ...parsed,
-        engine: 'tesseract-fallback',
+        engine: 'tesseract',
         warning: 'Cloud scan unavailable; using offline mode'
       };
     } catch (localErr) {

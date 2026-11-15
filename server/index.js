@@ -1022,6 +1022,59 @@ const logScanDebug = (stage, details = {}) => {
   } catch {}
 };
 
+// ─── MODEL CHAIN (FIX 3): Build ordered fallback chain from ListModels ───
+const PREFERRED_FLASH_MODELS = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.5-flash'];
+let geminiModelChain = null; // populated on first scan or boot
+
+const buildModelChain = async (apiKey) => {
+  // Env override wins
+  if (process.env.GEMINI_MODEL_CHAIN) {
+    const chain = process.env.GEMINI_MODEL_CHAIN.split(',').map(s => s.trim()).filter(Boolean);
+    if (chain.length > 0) {
+      logScanDebug('MODEL_CHAIN', { source: 'GEMINI_MODEL_CHAIN env', chain });
+      return chain;
+    }
+  }
+
+  const isClassic = apiKey.startsWith('AIzaSy');
+  const url = isClassic
+    ? `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`
+    : `https://generativelanguage.googleapis.com/v1beta/models`;
+  const headers = !isClassic ? { 'x-goog-api-key': apiKey } : {};
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  try {
+    const res = await fetch(url, { headers, signal: controller.signal });
+    clearTimeout(timeoutId);
+    if (!res.ok) {
+      logScanDebug('MODEL_CHAIN', { status: 'LIST_FAILED', http: res.status });
+      // Fallback: use env GEMINI_MODEL or first preferred
+      const fallback = process.env.GEMINI_MODEL || PREFERRED_FLASH_MODELS[0];
+      return [fallback];
+    }
+    const data = await res.json();
+    const availableNames = new Set((data.models || [])
+      .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+      .map(m => m.name.replace(/^models\//, '')));
+
+    const chain = PREFERRED_FLASH_MODELS.filter(m => availableNames.has(m));
+    if (chain.length === 0) {
+      // None of preferred models available — use env or first preferred as last resort
+      const fallback = process.env.GEMINI_MODEL || PREFERRED_FLASH_MODELS[0];
+      logScanDebug('MODEL_CHAIN', { status: 'NO_PREFERRED_FOUND', fallback, available_count: availableNames.size });
+      return [fallback];
+    }
+    logScanDebug('MODEL_CHAIN', { status: 'BUILT', chain, available_count: availableNames.size });
+    return chain;
+  } catch (err) {
+    clearTimeout(timeoutId);
+    logScanDebug('MODEL_CHAIN', { status: 'LIST_ERROR', error: err.message });
+    const fallback = process.env.GEMINI_MODEL || PREFERRED_FLASH_MODELS[0];
+    return [fallback];
+  }
+};
+
 const verifyGeminiModelHealth = async () => {
   const rawKey = process.env.GEMINI_API_KEY;
   const apiKey = rawKey ? rawKey.trim().replace(/^['"]|['"]$/g, '') : '';
@@ -1039,6 +1092,10 @@ const verifyGeminiModelHealth = async () => {
       return false;
     }
   }
+
+  // Build model chain on boot
+  geminiModelChain = await buildModelChain(apiKey);
+  logScanDebug('MODEL_HEALTH', { status: 'CHAIN_READY', chain: geminiModelChain });
 
   const startTime = Date.now();
   const controller = new AbortController();
@@ -1124,6 +1181,108 @@ const verifyGeminiModelHealth = async () => {
 
 app.verifyGeminiModelHealth = verifyGeminiModelHealth;
 
+// ─── FIX 2: Sanity validation layer ───
+function validateParsedItems(items, billTotal, taxableTotal = 0) {
+  const now = new Date();
+  const validatedItems = items.map(item => {
+    const issues = [];
+
+    // 1. Expiry: must match MM/YYYY, MM/YY, YYYY-MM, or YYYY-MM-DD and be future
+    if (item.expiry) {
+      const expiryStr = String(item.expiry);
+      const validFormat = /^\d{4}-\d{2}(-\d{2})?$/.test(expiryStr) ||
+        /^\d{1,2}[\/\-]\d{2,4}$/.test(expiryStr);
+      if (!validFormat) {
+        issues.push('expiry format invalid (expected MM/YYYY or YYYY-MM)');
+      } else {
+        // Parse into a date for future check
+        let expiryDate = null;
+        if (/^\d{4}-\d{2}(-\d{2})?$/.test(expiryStr)) {
+          expiryDate = new Date(expiryStr.length === 7 ? expiryStr + '-28' : expiryStr);
+        } else {
+          const parts = expiryStr.split(/[\/\-]/);
+          if (parts.length === 2) {
+            let yr = parts[1];
+            if (yr.length === 2) yr = '20' + yr;
+            expiryDate = new Date(`${yr}-${parts[0].padStart(2, '0')}-28`);
+          }
+        }
+        if (expiryDate && expiryDate < now) {
+          issues.push('expiry date is in the past');
+        }
+      }
+    }
+
+    // 2. Qty: integer, 1–5000
+    if (item.qty !== null && item.qty !== undefined) {
+      const q = Number(item.qty);
+      if (!Number.isInteger(q) || q < 1 || q > 5000) {
+        issues.push(`qty ${q} out of range (expected 1–5000)`);
+      }
+    }
+
+    // 3. Rate: 0 < rate ≤ 5000
+    if (item.rate !== null && item.rate !== undefined) {
+      const r = Number(item.rate);
+      if (r <= 0 || r > 5000) {
+        issues.push(`rate ₹${r} out of range (expected 0 < rate ≤ 5000)`);
+      }
+    }
+
+    // 4. Amount ≈ qty × rate (tolerance: ±2% or ±₹1, whichever is larger)
+    if (item.qty != null && item.rate != null && item.amount != null) {
+      const expected = Number(item.qty) * Number(item.rate);
+      const actual = Number(item.amount);
+      const tolerance = Math.max(expected * 0.02, 1);
+      if (Math.abs(actual - expected) > tolerance) {
+        issues.push(`amount ₹${actual} ≠ qty(${item.qty}) × rate(₹${item.rate}) = ₹${expected.toFixed(2)}`);
+      }
+    }
+
+    // 6. Batch: 4-12 alphanum; flag if looks like a date
+    if (item.batch_number) {
+      const b = String(item.batch_number);
+      if (b.length < 4 || b.length > 12 || !/^[A-Za-z0-9\-]+$/.test(b)) {
+        issues.push('batch format suspicious (expected 4–12 alphanumeric chars)');
+      }
+      const currentYear = String(now.getFullYear());
+      if (/^\d{6}$/.test(b) || b.includes(currentYear)) {
+        issues.push('batch looks like a date');
+      }
+    }
+
+    return {
+      ...item,
+      status: issues.length > 0 ? 'needs_fix' : 'ready',
+      issues
+    };
+  });
+
+  // 5. Bill total check: Σ(amounts) ≈ total (±2%)
+  // Supports both direct sum (exempt/all-inclusive) and GST/taxable subtotal
+  if (billTotal && billTotal > 0) {
+    const sumAmounts = validatedItems.reduce((s, it) => s + (Number(it.amount) || 0), 0);
+    if (sumAmounts > 0) {
+      const tolerance = Math.max(billTotal * 0.02, 1);
+      const matchesDirect = Math.abs(sumAmounts - billTotal) <= tolerance;
+      const matchesTaxable = taxableTotal > 0 && Math.abs(sumAmounts - taxableTotal) <= Math.max(taxableTotal * 0.02, 1);
+      const matchesWithGST = [0.05, 0.12, 0.18].some(rate => Math.abs(sumAmounts * (1 + rate) - billTotal) <= tolerance);
+
+      if (!matchesDirect && !matchesTaxable && !matchesWithGST) {
+        // Flag ALL items
+        for (const it of validatedItems) {
+          if (!it.issues.includes("items don't sum to bill total")) {
+            it.issues.push("items don't sum to bill total");
+            it.status = 'needs_fix';
+          }
+        }
+      }
+    }
+  }
+
+  return validatedItems;
+}
+
 const scanInvoiceHandler = async (req, res, next) => {
   const startTime = Date.now();
   try {
@@ -1154,22 +1313,29 @@ const scanInvoiceHandler = async (req, res, next) => {
       return res.status(500).json({ error: 'Server configuration error: GEMINI_API_KEY missing.', stage: 'API_KEY_CHECK', misconfigured: true });
     }
 
-    const prompt = `You are given a PHOTO of a thermal-printed purchase bill from an Indian medicine distributor. The print may be faded, small, tilted or have glare. Extract every medicine line item: name (as printed), quantity (number), unit/pack if visible, rate, amount. Rules: Output STRICT JSON only: {"items":[{"name":"...","qty":0,"rate":0.0,"amount":0.0}],"total":0.0,"bill_no":"","date":"","distributor":""}. Copy names EXACTLY as printed. Do NOT correct spellings or guess medicine names. If a field is unreadable use null. If the whole bill is unreadable return {"items":[],"error":"unreadable_bill"}. Never invent items not visible on the bill.`;
+    const prompt = `You are given a PHOTO of a thermal-printed purchase bill from an Indian medicine distributor. The print may be faded, small, tilted or have glare. Extract every medicine line item: name (as printed), batch number (batch_number), expiry date (expiry), quantity (qty), unit/pack if visible, rate, amount. Rules: Output STRICT JSON only: {"items":[{"name":"...","batch_number":"...","expiry":"MM/YYYY","qty":0,"rate":0.0,"amount":0.0}],"total":0.0,"taxable_amount":0.0,"bill_no":"","date":"","distributor":""}. Copy names EXACTLY as printed. Do NOT correct spellings or guess medicine names. If a field is unreadable use null. If the whole bill is unreadable return {"items":[],"error":"unreadable_bill"}. Never invent items not visible on the bill.`;
 
     // Support both classic ('AIzaSy') and new v2 ('AQ.') API key formats
     const isClassicKey = apiKey.startsWith('AIzaSy');
-    const modelName = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
-    const geminiUrl = isClassicKey
-      ? `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`
-      : `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`;
-    const geminiHeaders = {
-      'Content-Type': 'application/json',
-      ...(!isClassicKey ? { 'x-goog-api-key': apiKey } : {})
-    };
 
-    const makeGeminiRequest = async () => {
+    // ─── FIX 3: Model chain with fast 503 fallback ───
+    // Build chain lazily on first scan
+    if (!geminiModelChain) {
+      geminiModelChain = await buildModelChain(apiKey);
+    }
+    const modelChain = geminiModelChain;
+
+    const makeGeminiRequestForModel = async (modelName, perAttemptTimeout = 12000) => {
+      const geminiUrl = isClassicKey
+        ? `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`
+        : `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`;
+      const geminiHeaders = {
+        'Content-Type': 'application/json',
+        ...(!isClassicKey ? { 'x-goog-api-key': apiKey } : {})
+      };
+
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      const timeoutId = setTimeout(() => controller.abort(), perAttemptTimeout);
       try {
         const response = await fetch(geminiUrl, {
           method: 'POST',
@@ -1200,29 +1366,114 @@ const scanInvoiceHandler = async (req, res, next) => {
       }
     };
 
-    let geminiRes;
-    let lastNetworkError = null;
+    // Helper: check if error is 503/UNAVAILABLE/high demand
+    const is503Unavailable = (response, errorBody) => {
+      if (response && response.status === 503) return true;
+      if (errorBody && (
+        errorBody.includes('high demand') ||
+        errorBody.includes('UNAVAILABLE') ||
+        errorBody.includes('overloaded')
+      )) return true;
+      return false;
+    };
 
-    // Execute with 30s timeout and 1 retry on network failure or 5xx
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      try {
-        geminiRes = await makeGeminiRequest();
-        if (geminiRes.ok || geminiRes.status === 429) {
+    let geminiRes = null;
+    let usedModel = modelChain[0];
+    let lastNetworkError = null;
+    const totalBudgetMs = 20000; // 20s total cloud budget
+
+    logScanDebug('API_KEY_CHECK', { key_format: isClassicKey ? 'classic' : 'v2', chain: modelChain });
+
+    // Try each model in chain; on 503/UNAVAILABLE, immediately switch
+    for (let ci = 0; ci < modelChain.length; ci++) {
+      const modelName = modelChain[ci];
+      const elapsed = Date.now() - startTime;
+      if (elapsed >= totalBudgetMs) {
+        logScanDebug('FAILURE', { failed_stage: 'CLOUD_BUDGET_EXHAUSTED', elapsed_ms: elapsed, models_tried: ci });
+        break;
+      }
+      const remainingBudget = totalBudgetMs - elapsed;
+      const perAttemptTimeout = Math.min(12000, remainingBudget);
+
+      // For the LAST model in chain: allow 1 retry with 2s backoff (existing behavior)
+      const isLastModel = ci === modelChain.length - 1;
+      const maxAttempts = isLastModel ? 2 : 1;
+
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          if (process.env.SIMULATE_503_MODEL && (process.env.SIMULATE_503_MODEL === 'ALL' || process.env.SIMULATE_503_MODEL === modelName)) {
+            logScanDebug('API_RETRY', { attempt, model: modelName, status: 503, message: 'The model is currently experiencing high demand (simulated 503)' });
+            if (isLastModel && attempt === 1) {
+              await new Promise(r => setTimeout(r, 2000));
+              geminiRes = null;
+              continue;
+            }
+            logScanDebug('MODEL_SWITCH', {
+              from_model: modelName,
+              to_model: modelChain[ci + 1] || 'tesseract-fallback',
+              reason: 'HTTP 503: The model is currently experiencing high demand (status UNAVAILABLE)'
+            });
+            geminiRes = null;
+            await new Promise(r => setTimeout(r, 200));
+            break;
+          }
+
+          geminiRes = await makeGeminiRequestForModel(modelName, perAttemptTimeout);
+
+          if (geminiRes.ok || geminiRes.status === 429) {
+            usedModel = modelName;
+            break;
+          }
+
+          // Check for 503 / UNAVAILABLE
+          if (geminiRes.status >= 500) {
+            let errorBody = '';
+            try { errorBody = await geminiRes.text(); } catch {}
+            if (is503Unavailable(geminiRes, errorBody)) {
+              logScanDebug('API_RETRY', { attempt, model: modelName, status: geminiRes.status, message: 'Model unavailable / high demand' });
+              if (isLastModel && attempt === 1) {
+                // Last model gets 1 retry with 2s backoff
+                await new Promise(r => setTimeout(r, 2000));
+                geminiRes = null;
+                continue;
+              }
+              // Not last model: switch immediately
+              logScanDebug('MODEL_SWITCH', { from_model: modelName, to_model: modelChain[ci + 1] || 'tesseract-fallback', reason: `HTTP ${geminiRes.status}: ${errorBody.slice(0, 200)}` });
+              geminiRes = null;
+              // 500ms pause between models
+              await new Promise(r => setTimeout(r, 500));
+              break; // try next model
+            }
+            // Non-503 5xx: for last model, retry once
+            if (isLastModel && attempt === 1) {
+              logScanDebug('API_RETRY', { attempt: 1, model: modelName, status: geminiRes.status, message: 'Server error, retrying...' });
+              await new Promise(r => setTimeout(r, 1000));
+              geminiRes = null;
+              continue;
+            }
+          }
+
+          // Non-5xx error (4xx, etc.) — break out, don't try other models
+          usedModel = modelName;
+          break;
+        } catch (e) {
+          lastNetworkError = e;
+          logScanDebug('API_RETRY', { attempt, model: modelName, error: e.name || 'Error', message: e.message || String(e) });
+          if (isLastModel && attempt === 1) {
+            await new Promise(r => setTimeout(r, 1000));
+            continue;
+          }
+          if (ci < modelChain.length - 1) {
+            logScanDebug('MODEL_SWITCH', { from_model: modelName, to_model: modelChain[ci + 1], reason: e.message || 'Network error' });
+            await new Promise(r => setTimeout(r, 500));
+          }
           break;
         }
-        if (attempt === 1 && geminiRes.status >= 500) {
-          logScanDebug('API_RETRY', { attempt: 1, status: geminiRes.status, message: 'Server error, retrying upstream call...' });
-          await new Promise(r => setTimeout(r, 1000));
-          continue;
-        }
+      }
+
+      if (geminiRes && (geminiRes.ok || geminiRes.status === 429)) {
+        usedModel = modelName;
         break;
-      } catch (e) {
-        lastNetworkError = e;
-        logScanDebug('API_RETRY', { attempt, error: e.name || 'Error', message: e.message || String(e) });
-        if (attempt === 1) {
-          await new Promise(r => setTimeout(r, 1000));
-          continue;
-        }
       }
     }
 
@@ -1238,8 +1489,18 @@ const scanInvoiceHandler = async (req, res, next) => {
         Sentry.captureException(lastNetworkError);
       }
       return res.status(503).json({
-        error: 'AI service timeout — dobara try karo ya manual entry karo',
+        error: 'Scan failed — AI service busy. Please try again in a minute, or use manual entry.',
         stage: 'UPSTREAM_NETWORK',
+        latency_ms
+      });
+    }
+
+    if (!geminiRes) {
+      const latency_ms = Date.now() - startTime;
+      logScanDebug('FAILURE', { failed_stage: 'ALL_MODELS_EXHAUSTED', latency_ms, models_tried: modelChain.length });
+      return res.status(503).json({
+        error: 'Scan failed — AI service busy. Please try again in a minute, or use manual entry.',
+        stage: 'ALL_MODELS_EXHAUSTED',
         latency_ms
       });
     }
@@ -1271,8 +1532,8 @@ const scanInvoiceHandler = async (req, res, next) => {
       }
       return res.status(isConfigError ? 500 : 502).json({
         error: isConfigError
-          ? `Cloud model '${modelName}' rejected with HTTP ${status}: model misconfigured or decommissioned.`
-          : 'Upstream AI error.',
+          ? `Cloud model '${usedModel}' rejected with HTTP ${status}: model misconfigured or decommissioned.`
+          : 'Scan failed — AI service busy. Please try again in a minute, or use manual entry.',
         stage: isConfigError ? 'MODEL_CONFIG_ERROR' : 'UPSTREAM_API',
         status,
         misconfigured: isConfigError,
@@ -1287,6 +1548,7 @@ const scanInvoiceHandler = async (req, res, next) => {
     // Log raw response snippet (first 2000 chars)
     logScanDebug('API_CALL', {
       status: geminiRes.status,
+      model: usedModel,
       latency_ms,
       raw_response_snippet: rawText.slice(0, 2000)
     });
@@ -1302,7 +1564,7 @@ const scanInvoiceHandler = async (req, res, next) => {
       logScanDebug('JSON_PARSE_ERROR', { error: e.message, raw: rawText.slice(0, 300) });
       // 1 retry for malformed JSON
       try {
-        const retryRes = await makeGeminiRequest();
+        const retryRes = await makeGeminiRequestForModel(usedModel, 12000);
         if (retryRes.ok) {
           const retryResJson = await retryRes.json();
           let retryRaw = retryResJson.candidates?.[0]?.content?.parts?.[0]?.text || '';
@@ -1333,11 +1595,14 @@ const scanInvoiceHandler = async (req, res, next) => {
       });
     }
 
+    // FIX 1: engine field uses actual model
+    const engineTag = `gemini:${usedModel}`;
+
     // Check for unreadable bill error explicitly signaled by prompt
     if (parsedData.error === 'unreadable_bill' || (Array.isArray(parsedData.items) && parsedData.items.length === 0)) {
       logScanDebug('PARSING', { parsed_item_count: 0, note: 'unreadable_bill or empty items' });
       return res.json({
-        engine: modelName,
+        engine: engineTag,
         bill_no: parsedData.bill_no || parsedData.invoice_number || '',
         invoice_number: parsedData.bill_no || parsedData.invoice_number || '',
         distributor: parsedData.distributor || parsedData.supplier_name || '',
@@ -1350,6 +1615,7 @@ const scanInvoiceHandler = async (req, res, next) => {
         debug: {
           status: geminiRes.status,
           latency_ms,
+          model: usedModel,
           raw_response_snippet: rawText.slice(0, 2000)
         }
       });
@@ -1385,7 +1651,7 @@ const scanInvoiceHandler = async (req, res, next) => {
       const unit = item.unit || item.pack || null;
       const batch_number = item.batch_number ? String(item.batch_number).trim() : null;
       let expiry = item.expiry ? String(item.expiry).trim() : null;
-      if (expiry && !/^\d{4}-\d{2}-\d{2}$/.test(expiry)) {
+      if (expiry && !/^\d{4}-\d{2}(-\d{2})?$/.test(expiry) && !/^\d{1,2}[\/\-]\d{2,4}$/.test(expiry)) {
         expiry = null;
       }
 
@@ -1404,26 +1670,35 @@ const scanInvoiceHandler = async (req, res, next) => {
       };
     });
 
+    // FIX 2: Apply sanity validation
+    const billTotal = Number(parsedData.total) || 0;
+    const taxableTotal = Number(parsedData.taxable_amount || parsedData.subtotal) || 0;
+    const validatedItems = validateParsedItems(normalizedItems, billTotal, taxableTotal);
+
     logScanDebug('PARSING', {
-      parsed_item_count: normalizedItems.length,
+      parsed_item_count: validatedItems.length,
+      ready_count: validatedItems.filter(i => i.status === 'ready').length,
+      needs_fix_count: validatedItems.filter(i => i.status === 'needs_fix').length,
       latency_ms,
+      model: usedModel,
       status: geminiRes.status
     });
 
     return res.json({
-      engine: modelName,
+      engine: engineTag,
       bill_no: parsedData.bill_no || parsedData.invoice_number || '',
       invoice_number: parsedData.bill_no || parsedData.invoice_number || '',
       distributor: parsedData.distributor || parsedData.supplier_name || '',
       supplier_name: parsedData.distributor || parsedData.supplier_name || '',
       date: parsedData.date || parsedData.invoice_date || '',
       invoice_date: parsedData.date || parsedData.invoice_date || '',
-      total: Number(parsedData.total) || 0,
+      total: billTotal,
       error: parsedData.error || null,
-      items: normalizedItems,
+      items: validatedItems,
       debug: {
         status: geminiRes.status,
         latency_ms,
+        model: usedModel,
         raw_response_snippet: rawText.slice(0, 2000)
       }
     });
@@ -3142,7 +3417,7 @@ async function activateTenantSubscription(tenantId, months, tier, pricePerMonth,
          subscription_ends_at = GREATEST(t.subscription_ends_at, now()) + make_interval(months => $2::int)
      WHERE t.id = $1
      RETURNING *`,
-    [tenantId, months, pricePerMonth || 416.0, tier || null]
+    [tenantId, months, pricePerMonth || 416.0]
   );
   return rows[0] || null;
 }

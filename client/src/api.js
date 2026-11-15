@@ -1,5 +1,5 @@
 import { Capacitor } from '@capacitor/core';
-import { getCachedData, setCachedData, invalidateCache, clearApiCache } from './cache';
+import { getCachedData, setCachedData, invalidateCache, clearApiCache } from './cache.js';
 
 export { getCachedData, setCachedData, invalidateCache, clearApiCache };
 
@@ -46,13 +46,14 @@ const API_BASE = isNative
   ? (import.meta.env.VITE_API_BASE || 'https://medistock-api.vercel.app')
   : '';
 
-export async function api(path, { method = 'GET', body } = {}) {
+export async function api(path, { method = 'GET', body, signal } = {}) {
   const token = localStorage.getItem('medistock_token');
   const fullUrl = path.startsWith('http') ? path : (API_BASE + path);
   let res;
   try {
     res = await fetch(fullUrl, {
       method,
+      signal,
       headers: {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: 'Bearer ' + token } : {}),
