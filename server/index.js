@@ -1390,6 +1390,27 @@ const scanInvoiceHandler = async (req, res, next) => {
       return false;
     };
 
+    // ─── TIER 1 PRIMARY: NVIDIA NIM (Nemotron 3.5 Parse) ───
+    // Fast (~2-3s), deterministic, and free of Google Gemini 429 quota & 503 congestion issues
+    if (process.env.NVIDIA_API_KEY && !process.env.FORCE_GEMINI_PRIMARY) {
+      logScanDebug('PRIMARY_AI_CALL', { provider: 'nvidia', engine: 'nvidia:nemotron-3.5-parse' });
+      const nvidiaResult = await executeNvidiaTier({
+        base64Data,
+        prompt,
+        storeId: req.storeId,
+        pool,
+        startTime,
+        maxTotalBudgetMs: 15000,
+        logScanDebug,
+        validateParsedItems
+      });
+
+      if (nvidiaResult) {
+        return res.json(nvidiaResult);
+      }
+      logScanDebug('PROVIDER_SWITCH', { from: 'nvidia', to: 'gemini', reason: 'NVIDIA primary tier returned empty or failed' });
+    }
+
     let geminiRes = null;
     let usedModel = modelChain[0];
     let lastNetworkError = null;

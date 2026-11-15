@@ -77,7 +77,8 @@ async function run() {
     env: {
       ...process.env,
       PORT: String(PORT),
-      GEMINI_MODEL_CHAIN: 'gemini-3.5-flash,gemini-2.5-flash'
+      GEMINI_MODEL_CHAIN: 'gemini-3.5-flash,gemini-2.5-flash',
+      FORCE_GEMINI_PRIMARY: 'true'
     }
   });
 
