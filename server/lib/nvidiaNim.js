@@ -21,6 +21,110 @@ const MODEL_M2_VISION = 'minimaxai/minimax-m3.1-flash';
 const MODEL_M2_ALT = 'mistralai/mistral-large-4-1t-a52b';
 
 /**
+ * Structured Element & LaTeX Table Parser for Nemotron Parse output
+ */
+function parseNemotronStructured(rawContent) {
+  if (!rawContent) return null;
+  let parsed = null;
+  try {
+    parsed = typeof rawContent === 'string' ? JSON.parse(rawContent.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()) : rawContent;
+  } catch {
+    return null;
+  }
+
+  let elements = [];
+  if (Array.isArray(parsed)) {
+    for (const item of parsed) {
+      if (Array.isArray(item)) elements.push(...item);
+      else if (item && typeof item === 'object') elements.push(item);
+    }
+  } else if (parsed && Array.isArray(parsed.elements)) {
+    elements = parsed.elements;
+  }
+
+  if (elements.length === 0) return null;
+
+  let supplier_name = '';
+  let invoice_number = '';
+  let invoice_date = '';
+  let total = 0;
+  const items = [];
+
+  for (const el of elements) {
+    const text = el.text || '';
+    const type = el.type || '';
+
+    // Header extraction
+    if (type === 'Section-header' || type === 'Page-header' || type === 'Text') {
+      if (!supplier_name && (type === 'Section-header' || /PHARMACEUTICALS|MEDICAL|CHEMIST|DRUG/i.test(text))) {
+        supplier_name = text.split('\n')[0].trim();
+      }
+      const invMatch = text.match(/(?:INVOICE|BILL)\s*(?:NO|NUMBER)?[:\s]+([A-Z0-9\-]+)/i);
+      if (invMatch && !invoice_number) {
+        invoice_number = invMatch[1].trim();
+      }
+      const dateMatch = text.match(/DATE[:\s]+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i);
+      if (dateMatch && !invoice_date) {
+        invoice_date = dateMatch[1].trim();
+      }
+    }
+
+    // Table extraction (LaTeX or row arrays)
+    if (type === 'Table' || text.includes('\\begin{tabular}')) {
+      const lines = text.split('\n');
+      for (let line of lines) {
+        line = line.trim();
+        if (!line || line.startsWith('\\begin') || line.startsWith('\\end')) continue;
+        line = line.replace(/\\\\$/, '').trim();
+        const cells = line.split('&').map(c => c.replace(/\*\*/g, '').trim());
+        if (cells.length < 2) continue;
+
+        const first = cells[0].toUpperCase();
+        if (first.includes('ITEM NAME') || first.includes('SUBTOTAL') || first.includes('CGST') || first.includes('SGST')) {
+          continue;
+        }
+        if (first.includes('GRAND TOTAL') || first.includes('TOTAL')) {
+          const allText = cells.join(' ');
+          const match = allText.match(/(?:INR|RS\.?|₹)?\s*([\d,]+\.?\d*)/i);
+          if (match && !total) {
+            total = parseFloat(match[1].replace(/,/g, ''));
+          }
+          continue;
+        }
+
+        if (cells.length >= 4) {
+          const name = cells[0];
+          const batch = cells.length >= 5 ? cells[1] : '';
+          const exp = cells.length >= 5 ? cells[2] : '';
+          const qty = cells.length >= 5 ? parseFloat(cells[3]) : parseFloat(cells[1]);
+          const rate = cells.length >= 5 ? parseFloat(cells[4]) : parseFloat(cells[2]);
+          const amount = cells.length >= 6 ? parseFloat(cells[5].replace(/,/g, '')) : (qty * rate);
+
+          if (name && qty > 0) {
+            items.push({
+              name,
+              medicine_name: name,
+              company: null,
+              batch_number: batch || null,
+              expiry: exp || null,
+              qty,
+              quantity: qty,
+              free_quantity: null,
+              rate,
+              amount,
+              unit: null,
+              status: 'ready'
+            });
+          }
+        }
+      }
+    }
+  }
+
+  return { supplier_name, invoice_number, invoice_date, total, items };
+}
+
+/**
  * Extracts plain text lines from Nemotron Parse response
  * Handles elements categorized Page-header/Table/Text/Section-header/Page-footer,
  * Markdown tables, or plain text strings.
@@ -252,7 +356,46 @@ async function executeNvidiaTier({
 
         if (m1Res.ok) {
           const resJson = await m1Res.json();
-          const rawContent = resJson.choices?.[0]?.message?.content || '';
+          const choice = resJson.choices?.[0];
+          const msg = choice?.message;
+          const rawContent = msg?.content || msg?.tool_calls?.[0]?.function?.arguments || '';
+
+          // 1. High-precision structured element & LaTeX table parser
+          const structuredResult = parseNemotronStructured(rawContent);
+          if (structuredResult && structuredResult.items.length >= 1) {
+            const billTotal = structuredResult.total || 0;
+            const validatedItems = validateParsedItems(structuredResult.items, billTotal, 0);
+            const readyCount = validatedItems.filter(i => i.status === 'ready').length;
+
+            if (validatedItems.length >= 1 && readyCount >= Math.ceil(validatedItems.length / 2)) {
+              logScanDebug('PARSING', {
+                provider: 'nvidia',
+                model: MODEL_M1_PARSE,
+                engine: 'nvidia:nemotron-3.5-parse',
+                parsed_item_count: validatedItems.length,
+                ready_count: readyCount
+              });
+              return {
+                engine: 'nvidia:nemotron-3.5-parse',
+                bill_no: structuredResult.invoice_number || '',
+                invoice_number: structuredResult.invoice_number || '',
+                distributor: structuredResult.supplier_name || '',
+                supplier_name: structuredResult.supplier_name || '',
+                date: structuredResult.invoice_date || '',
+                invoice_date: structuredResult.invoice_date || '',
+                total: billTotal,
+                error: null,
+                items: validatedItems,
+                debug: {
+                  provider: 'nvidia',
+                  model: MODEL_M1_PARSE,
+                  latency_ms: Date.now() - startTime
+                }
+              };
+            }
+          }
+
+          // 2. Fall back to plain text extraction + parseInvoiceText
           const textExtracted = extractTextFromNemotronParse(rawContent);
 
           logScanDebug('PARSING', {
@@ -334,7 +477,7 @@ async function executeNvidiaTier({
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // STEP 2: Attempt M2 (minimax-m3.1-flash) — 10s timeout
+  // STEP 2: Attempt M2 (minimax-m3.1-flash) — 8s timeout
   // ───────────────────────────────────────────────────────────────────────────
   const elapsedBeforeM2 = Date.now() - startTime;
   if (elapsedBeforeM2 >= maxTotalBudgetMs) {
@@ -346,7 +489,7 @@ async function executeNvidiaTier({
     return null;
   }
 
-  const m2Timeout = Math.min(10000, Math.max(1000, maxTotalBudgetMs - elapsedBeforeM2));
+  const m2Timeout = Math.min(8000, Math.max(1000, maxTotalBudgetMs - elapsedBeforeM2));
   logScanDebug('API_CALL', {
     provider: 'nvidia',
     model: MODEL_M2_VISION,
