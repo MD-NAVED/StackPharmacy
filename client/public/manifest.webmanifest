@@ -1,6 +1,6 @@
 {
-  "name": "MediStock — Pharmacy Management",
-  "short_name": "MediStock",
+  "name": "StackPharmacy — Pharmacy Management",
+  "short_name": "StackPharmacy",
   "description": "Pharmacy billing & inventory management: FEFO billing, batch & expiry tracking, purchases, reports.",
   "start_url": "/",
   "scope": "/",

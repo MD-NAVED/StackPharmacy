@@ -44,7 +44,7 @@ const isNative = Capacitor.isNativePlatform();
 // Use VITE_API_BASE from env or fallback for web/native
 const API_BASE = (typeof process !== 'undefined' && process.env?.VITE_API_BASE)
   ? process.env.VITE_API_BASE
-  : (isNative ? (import.meta.env?.VITE_API_BASE || 'https://medistock-api.vercel.app') : '');
+  : (isNative ? (import.meta.env?.VITE_API_BASE || 'https://api.stackpharmacy.in') : '');
 
 export async function api(path, { method = 'GET', body, signal, timeoutMs } = {}) {
   const token = typeof localStorage !== 'undefined'

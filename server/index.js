@@ -41,6 +41,10 @@ const allowedOrigins = [
   'http://127.0.0.1:3002',
   'https://medistock.vercel.app',    // Main Vercel frontend
   'https://medistock-api.vercel.app', // API domain if different
+  'https://stackpharmacy.in',        // Custom production domain
+  'https://www.stackpharmacy.in',    // Custom production domain (www)
+  'https://api.stackpharmacy.in',    // Custom production backend (api)
+  /^https:\/\/.*\.stackpharmacy\.in$/, // Any custom subdomain
   /^http:\/\/localhost:\d+$/,        // Any local dev port
   /^http:\/\/127\.0\.0\.1:\d+$/,     // Any local 127.0.0.1 port
   /^https:\/\/.*\.vercel\.app$/,     // Any Vercel preview deployment

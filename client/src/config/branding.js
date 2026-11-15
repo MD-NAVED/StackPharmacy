@@ -4,7 +4,7 @@
  * updates the onboarding page and all related public displays.
  */
 
-export const BRAND_NAME = 'PharmacyTrack';
+export const BRAND_NAME = 'StackPharmacy';
 export const BRAND_TAGLINE = 'Smart Stock & Expiry Management for Chemist Stores';
 export const BRAND_SHORT_DESC = 'The simple phone app for Indian pharmacy owners to scan purchase bills, update stock in seconds, and get expiry alerts.';
 
