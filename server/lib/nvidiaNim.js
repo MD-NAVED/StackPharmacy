@@ -24,7 +24,7 @@ const MODEL_M2_ALT = 'mistralai/mistral-large-4-1t-a52b';
 const DEFAULT_NVIDIA_API_KEY = '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';
 
 /**
- * Structured Element & LaTeX Table Parser for Nemotron Parse output
+ * Structured Element, LaTeX & Markdown Table Parser for Nemotron Parse output
  */
 function parseNemotronStructured(rawContent) {
   if (!rawContent) return null;
@@ -32,7 +32,7 @@ function parseNemotronStructured(rawContent) {
   try {
     parsed = typeof rawContent === 'string' ? JSON.parse(rawContent.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()) : rawContent;
   } catch {
-    return null;
+    parsed = [{ type: 'Table', text: String(rawContent) }];
   }
 
   let elements = [];
@@ -43,6 +43,8 @@ function parseNemotronStructured(rawContent) {
     }
   } else if (parsed && Array.isArray(parsed.elements)) {
     elements = parsed.elements;
+  } else if (parsed && typeof parsed === 'object') {
+    elements = [parsed];
   }
 
   if (elements.length === 0) return null;
@@ -54,74 +56,154 @@ function parseNemotronStructured(rawContent) {
   const items = [];
 
   for (const el of elements) {
-    const text = el.text || '';
+    const text = el.text || el.content || '';
     const type = el.type || '';
 
     // Header extraction
-    if (type === 'Section-header' || type === 'Page-header' || type === 'Text') {
-      if (!supplier_name && (type === 'Section-header' || /PHARMACEUTICALS|MEDICAL|CHEMIST|DRUG/i.test(text))) {
-        supplier_name = text.split('\n')[0].trim();
+    const lines = text.split('\n');
+    for (const line of lines) {
+      if (!supplier_name && /PHARMACEUTICALS|MEDICAL|CHEMIST|DRUG|DISTRIBUTOR|MEDICOS|AGENCY|LTD|PVT/i.test(line)) {
+        supplier_name = line.replace(/^[^A-Za-z0-9]+/, '').trim();
       }
-      const invMatch = text.match(/(?:INVOICE|BILL)\s*(?:NO|NUMBER)?[:\s]+([A-Z0-9\-]+)/i);
+      const invMatch = line.match(/(?:INVOICE|BILL|INV|VCH)\s*(?:NO|NUMBER|#)?[:\s\.-]+([A-Z0-9\-\/]{3,25})/i);
       if (invMatch && !invoice_number) {
         invoice_number = invMatch[1].trim();
       }
-      const dateMatch = text.match(/DATE[:\s]+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i);
+      const dateMatch = line.match(/(?:DATE|DT)[:\s\.-]+(\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4})/i)
+        || line.match(/\b(\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4})\b/);
       if (dateMatch && !invoice_date) {
         invoice_date = dateMatch[1].trim();
       }
+      if (!/TOTAL\s*(?:ITEMS|QTY|COUNT|LINES)/i.test(line)) {
+        const totalMatch = line.match(/(?:GRAND\s*TOTAL|NET\s*(?:PAYABLE|AMOUNT|TOTAL)|TOTAL\s*(?:AMOUNT|VALUE)|BILL\s*AMOUNT)[:\s\.-]*(?:INR|RS\.?|₹)?\s*([\d,]+\.?\d*)/i);
+        if (totalMatch && !total) {
+          total = parseFloat(totalMatch[1].replace(/,/g, ''));
+        }
+      }
     }
 
-    // Table extraction (LaTeX or row arrays)
-    if (type === 'Table' || text.includes('\\begin{tabular}')) {
-      const lines = text.split('\n');
-      for (let line of lines) {
-        line = line.trim();
+    // Table extraction (LaTeX, Markdown, or raw rows)
+    const isTable = type === 'Table' || text.includes('\\begin{tabular}') || (text.includes('|') && (text.includes('\n|') || text.includes('|---'))) || Array.isArray(el.rows);
+    if (isTable) {
+      const rawRows = Array.isArray(el.rows) ? el.rows : text.split('\n');
+
+      let colNameIdx = -1;
+      let colBatchIdx = -1;
+      let colExpIdx = -1;
+      let colQtyIdx = -1;
+      let colRateIdx = -1;
+      let colAmountIdx = -1;
+
+      for (let rawLine of rawRows) {
+        let line = typeof rawLine === 'string' ? rawLine.trim() : (Array.isArray(rawLine) ? rawLine.join(' & ') : '');
         if (!line || line.startsWith('\\begin') || line.startsWith('\\end')) continue;
+        if (/^\|?[-:\s|]+\|?$/.test(line)) continue;
         line = line.replace(/\\\\$/, '').trim();
-        const cells = line.split('&').map(c => c.replace(/\*\*/g, '').trim());
+
+        let cells = [];
+        if (Array.isArray(rawLine)) {
+          cells = rawLine.map(c => String(c).trim());
+        } else if (line.includes('|')) {
+          cells = line.split('|').map(c => c.replace(/\*\*/g, '').trim()).filter(Boolean);
+        } else if (line.includes('&')) {
+          cells = line.split('&').map(c => c.replace(/\*\*/g, '').trim());
+        } else if (line.includes('\t')) {
+          cells = line.split('\t').map(c => c.trim()).filter(Boolean);
+        }
+
         if (cells.length < 2) continue;
 
-        const first = cells[0].toUpperCase();
-        if (first.includes('ITEM NAME') || first.includes('SUBTOTAL') || first.includes('CGST') || first.includes('SGST')) {
+        // Skip non-money totals
+        if (/TOTAL\s*(?:ITEMS|QTY|COUNT|LINES)/i.test(cells[0])) continue;
+
+        const lineUpper = cells.join(' ').toUpperCase();
+        if (/ITEM|PARTICULAR|PRODUCT|DESCRIPTION|MEDICINE/i.test(lineUpper) && /QTY|QUANTITY|RATE|PRICE|AMOUNT|BATCH/i.test(lineUpper)) {
+          cells.forEach((c, idx) => {
+            const cu = c.toUpperCase();
+            if (/ITEM|PARTICULAR|PRODUCT|DESCRIPTION|MEDICINE/i.test(cu) && colNameIdx === -1) colNameIdx = idx;
+            else if (/BATCH|B\.?NO|LOT/i.test(cu) && colBatchIdx === -1) colBatchIdx = idx;
+            else if (/EXP/i.test(cu) && colExpIdx === -1) colExpIdx = idx;
+            else if (/QTY|QUANTITY|NOS|PACK/i.test(cu) && colQtyIdx === -1) colQtyIdx = idx;
+            else if (/RATE|PRICE|P\.?RATE|COST/i.test(cu) && !/MRP|AMOUNT/i.test(cu) && colRateIdx === -1) colRateIdx = idx;
+            else if (/AMOUNT|NET|VALUE|TOTAL/i.test(cu) && colAmountIdx === -1) colAmountIdx = idx;
+          });
           continue;
         }
-        if (first.includes('GRAND TOTAL') || first.includes('TOTAL')) {
+
+        if (/GRAND\s*TOTAL|NET\s*(?:PAYABLE|AMOUNT|TOTAL)|SUBTOTAL/i.test(cells[0]) || (cells[0].toUpperCase() === 'TOTAL' && cells.length >= 2)) {
           const allText = cells.join(' ');
           const match = allText.match(/(?:INR|RS\.?|₹)?\s*([\d,]+\.?\d*)/i);
-          if (match && !total) {
+          if (match) {
             total = parseFloat(match[1].replace(/,/g, ''));
           }
           continue;
         }
 
-        if (cells.length >= 4) {
-          const name = cells[0];
-          const batch = cells.length >= 5 ? cells[1] : '';
-          const exp = cells.length >= 5 ? cells[2] : '';
-          const qty = cells.length >= 5 ? parseFloat(cells[3]) : parseFloat(cells[1]);
-          const rate = cells.length >= 5 ? parseFloat(cells[4]) : parseFloat(cells[2]);
-          const amount = cells.length >= 6 ? parseFloat(cells[5].replace(/,/g, '')) : (qty * rate);
+        let name = '';
+        let batch = '';
+        let exp = '';
+        let qty = 0;
+        let rate = 0;
+        let amount = 0;
 
-          if (name && qty > 0) {
+        if (colNameIdx !== -1 && colQtyIdx !== -1) {
+          name = cells[colNameIdx] || '';
+          batch = colBatchIdx !== -1 ? (cells[colBatchIdx] || '') : '';
+          exp = colExpIdx !== -1 ? (cells[colExpIdx] || '') : '';
+          qty = parseFloat((cells[colQtyIdx] || '0').replace(/[^\d\.]/g, '')) || 0;
+          rate = colRateIdx !== -1 ? (parseFloat((cells[colRateIdx] || '0').replace(/[^\d\.]/g, '')) || 0) : 0;
+          amount = colAmountIdx !== -1 ? (parseFloat((cells[colAmountIdx] || '0').replace(/[^\d\.]/g, '')) || 0) : (qty * rate);
+        } else {
+          let offset = 0;
+          if (/^\d{1,3}$/.test(cells[0].trim())) {
+            offset = 1;
+          }
+          name = cells[offset] || '';
+
+          for (let i = offset + 1; i < cells.length; i++) {
+            const c = cells[i].trim();
+            if (!exp && /^\d{1,2}[\/\-]\d{2,4}$/.test(c)) {
+              exp = c;
+            } else if (!batch && /^[A-Z0-9\-]{4,15}$/i.test(c) && !/^\d+$/.test(c)) {
+              batch = c;
+            }
+          }
+
+          const numCells = cells.slice(offset + 1).map(c => parseFloat(c.replace(/[^\d\.]/g, ''))).filter(n => !isNaN(n) && n > 0);
+          if (numCells.length >= 2) {
+            qty = numCells[0];
+            rate = numCells[1];
+            amount = numCells.length >= 3 ? numCells[2] : (qty * rate);
+          } else if (numCells.length === 1) {
+            qty = numCells[0];
+          }
+        }
+
+        if (name && (qty > 0 || name.length > 3)) {
+          name = name.replace(/^\d+[\.\)\s\-]+/, '').trim();
+          if (name.length >= 2 && !/^(?:total|subtotal|cgst|sgst|igst|gst|tax|discount|round)/i.test(name)) {
             items.push({
               name,
               medicine_name: name,
               company: null,
               batch_number: batch || null,
               expiry: exp || null,
-              qty,
-              quantity: qty,
+              qty: qty || 1,
+              quantity: qty || 1,
               free_quantity: null,
-              rate,
-              amount,
+              rate: rate || 0,
+              amount: amount || (qty * rate),
               unit: null,
-              status: 'ready'
+              status: (qty > 0 && rate > 0) ? 'ready' : 'needs_fix'
             });
           }
         }
       }
     }
+  }
+
+  if (!total && items.length > 0) {
+    total = items.reduce((sum, it) => sum + (it.amount || 0), 0);
   }
 
   return { supplier_name, invoice_number, invoice_date, total, items };
@@ -325,7 +407,7 @@ async function executeNvidiaTier({
   // ───────────────────────────────────────────────────────────────────────────
   const elapsedBeforeM1 = Date.now() - startTime;
   if (elapsedBeforeM1 < maxTotalBudgetMs) {
-    const m1Timeout = Math.min(8000, Math.max(1000, maxTotalBudgetMs - elapsedBeforeM1));
+    const m1Timeout = Math.min(22000, Math.max(2000, maxTotalBudgetMs - elapsedBeforeM1));
     logScanDebug('API_CALL', {
       provider: 'nvidia',
       model: MODEL_M1_PARSE,
@@ -368,9 +450,8 @@ async function executeNvidiaTier({
           if (structuredResult && structuredResult.items.length >= 1) {
             const billTotal = structuredResult.total || 0;
             const validatedItems = validateParsedItems(structuredResult.items, billTotal, 0);
-            const readyCount = validatedItems.filter(i => i.status === 'ready').length;
-
-            if (validatedItems.length >= 1 && readyCount >= Math.ceil(validatedItems.length / 2)) {
+            if (validatedItems.length >= 1) {
+              const readyCount = validatedItems.filter(i => i.status === 'ready').length;
               logScanDebug('PARSING', {
                 provider: 'nvidia',
                 model: MODEL_M1_PARSE,
@@ -428,8 +509,8 @@ async function executeNvidiaTier({
             const validatedItems = validateParsedItems(normalizedItems, billTotal, 0);
             const readyCount = validatedItems.filter(i => i.status === 'ready').length;
 
-            // If M1 output delivered good items (>= half ready, >= 1 item):
-            if (validatedItems.length >= 1 && readyCount >= Math.ceil(validatedItems.length / 2)) {
+            // If M1 output delivered items:
+            if (validatedItems.length >= 1) {
               logScanDebug('PARSING', {
                 provider: 'nvidia',
                 model: MODEL_M1_PARSE,
