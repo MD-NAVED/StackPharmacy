@@ -12,6 +12,7 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import { api } from '../api';
 import { useAuth } from '../auth';
+import { BRAND_NAME } from '../config/branding';
 
 export default function Login() {
   const { login } = useAuth();
@@ -55,7 +56,7 @@ export default function Login() {
             <Avatar sx={{ bgcolor: 'primary.main', width: 64, height: 64, mb: 1.5 }}>
               <LocalPharmacyIcon sx={{ fontSize: 34 }} />
             </Avatar>
-            <Typography variant="h5">MediStock</Typography>
+            <Typography variant="h5" sx={{ fontWeight: 800 }}>{BRAND_NAME}</Typography>
             <Typography variant="body2" color="text.secondary">Pharmacy Billing & Inventory</Typography>
           </Box>
 

@@ -190,7 +190,7 @@ export default function ImportData({ onImported }) {
         ]);
       }
     });
-    downloadCsv('MediStock-Import-Error-Report.csv', errorRows);
+    downloadCsv('StackPharmacy-Import-Error-Report.csv', errorRows);
   };
 
   const runImport = async () => {
@@ -227,7 +227,7 @@ export default function ImportData({ onImported }) {
           <Alert severity="info" sx={{ mb: 2 }}>
             <AlertTitle>Bring data from your old software</AlertTitle>
             Export the <b>items list from Marg / TradeEasy / any software as Excel or CSV</b>
-            and upload it here. MediStock detects the columns automatically — name, company,
+            and upload it here. StackPharmacy detects the columns automatically — name, company,
             MRP, batch, expiry and stock. Existing stock comes in batch-wise, so expiry alerts
             and FEFO billing work correctly from day one.
           </Alert>
@@ -241,7 +241,7 @@ export default function ImportData({ onImported }) {
             </Button>
             <Button
               startIcon={<DownloadIcon />}
-              onClick={() => downloadCsv('MediStock-Import-Template.csv', [
+              onClick={() => downloadCsv('StackPharmacy-Import-Template.csv', [
                 ['Item Name', 'Company', 'Type', 'Shelf', 'GST %', 'Buy Price', 'MRP', 'Batch No', 'Expiry Date', 'Stock Qty'],
                 ['Dolo 650mg', 'Micro Labs', 'Tablet', 'A1', '12', '1.30', '2.00', 'DL2451', '12/2027', '500'],
                 ['Ascoril LS Syrup', 'Glenmark', 'Syrup', 'B1', '12', '98.00', '125.00', 'AS118', '05/2026', '24'],
@@ -258,7 +258,7 @@ export default function ImportData({ onImported }) {
         <Paper sx={{ p: { xs: 2, md: 3 } }}>
           <Typography variant="h6" sx={{ mb: 0.5 }}>Step 2 — Match columns</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            File: <b>{parsed.sheet}</b> sheet, <b>{parsed.rows.length}</b> rows. MediStock
+            File: <b>{parsed.sheet}</b> sheet, <b>{parsed.rows.length}</b> rows. StackPharmacy
             guessed these automatically — pick a different column if any is wrong.
           </Typography>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
@@ -417,7 +417,7 @@ export default function ImportData({ onImported }) {
                     ['Row', 'Reason'],
                     ...summary.skipped.map((s) => [s.i, s.reason]),
                   ];
-                  downloadCsv('MediStock-Import-Skipped-Rows.csv', report);
+                  downloadCsv('StackPharmacy-Import-Skipped-Rows.csv', report);
                 }}
               >
                 Download full error report (CSV)

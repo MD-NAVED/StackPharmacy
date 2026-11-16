@@ -1774,7 +1774,7 @@ app.get('/api/public/invoice/:id', async (req, res, next) => {
     res.json({
       sale, items,
       store: {
-        name: settings.store_name || 'MediStock Pharmacy',
+        name: settings.store_name || 'StackPharmacy',
         phone: settings.phone || '',
         address: settings.store_address || '',
         gstin: settings.gst_number || '',
@@ -1815,7 +1815,7 @@ app.get('/api/public/invoice/:id/pdf', publicPdfLimiter, async (req, res, next) 
     doc.pipe(res);
 
     doc.font('Helvetica-Bold').fontSize(20).fillColor(GREEN)
-      .text(settings.store_name || 'MediStock Pharmacy', { align: 'center' });
+      .text(settings.store_name || 'StackPharmacy', { align: 'center' });
     doc.font('Helvetica').fontSize(9).fillColor('#555555');
     if (settings.store_address) doc.text(settings.store_address, { align: 'center' });
     const contact = [settings.phone, settings.gst_number ? 'GSTIN: ' + settings.gst_number : ''].filter(Boolean).join('   |   ');
@@ -1875,7 +1875,7 @@ app.get('/api/public/invoice/:id/pdf', publicPdfLimiter, async (req, res, next) 
     totalRow('TOTAL', inr(sale.total), true);
 
     doc.moveDown(2).font('Helvetica').fontSize(9).fillColor('#777777')
-      .text('Thank you for your visit!  -  Generated via MediStock', { align: 'center' });
+      .text('Thank you for your visit!  -  Generated via StackPharmacy', { align: 'center' });
 
     doc.end();
   } catch (e) { next(e); }
@@ -1914,7 +1914,7 @@ app.get('/api/whatsapp/summary', requireAuth, requireFeature('whatsapp_summary')
     const t = today.rows[0];
     const p = purchases.rows[0];
     const mo = month.rows[0];
-    const store = (settings.rows[0] || {}).store_name || 'MediStock';
+    const store = (settings.rows[0] || {}).store_name || 'StackPharmacy';
     const inr = (n) => '₹' + Math.round(Number(n)).toLocaleString('en-IN');
 
     const lines = [];
@@ -1956,7 +1956,7 @@ app.get('/api/whatsapp/summary', requireAuth, requireFeature('whatsapp_summary')
     lines.push(`• 📈 *Monthly Revenue:* ${inr(mo.revenue)} *(${mo.bills} ${mo.bills === 1 ? 'bill' : 'bills'})*`);
 
     lines.push('━━━━━━━━━━━━━━━━━━━━━');
-    lines.push('✨ _Generated automatically via MediStock App_');
+    lines.push('✨ _Generated automatically via StackPharmacy App_');
 
     res.json({
       text: lines.join('\n'),
@@ -2682,9 +2682,9 @@ app.post('/api/founder/tenants', requireAuth, requirePlatformAdmin, async (req, 
 
     // Build ready-to-send WhatsApp onboarding text for the client
     const cleanPhone = String(phone).replace(/[^\d]/g, '');
-    const loginUrl = 'https://medistock-pharma.vercel.app';
+    const loginUrl = 'https://www.stackpharmacy.in';
     const waText = encodeURIComponent(
-      `🏥 *Namaste ${owner_name}! Welcome to MediStock Pharmacy Software.*\n\n` +
+      `🏥 *Namaste ${owner_name}! Welcome to StackPharmacy Software.*\n\n` +
       `Aapka medical store *${store_name}* setup ho gaya hai!\n\n` +
       `🔗 *Login URL:* ${loginUrl}\n` +
       `👤 *Username:* ${uname}\n` +
@@ -2802,7 +2802,7 @@ app.post('/api/founder/tenants/:id/impersonate', requireAuth, requirePlatformAdm
     res.json({
       token,
       tenant,
-      redirectUrl: 'https://medistock-pharma.vercel.app/#impersonate_token=' + token,
+      redirectUrl: 'https://www.stackpharmacy.in/#impersonate_token=' + token,
     });
   } catch (e) { next(e); }
 });
@@ -3045,7 +3045,7 @@ app.post('/api/billing/create-order', requireAuth, async (req, res, next) => {
 
     // The logged-in user always belongs to exactly one store.
     const t = (await pool.query('SELECT id, store_name FROM tenants WHERE id = $1', [req.storeId])).rows[0];
-    if (!t) return bad(res, 404, 'No store subscription is linked to this account. Ask your MediStock partner to link it.');
+    if (!t) return bad(res, 404, 'No store subscription is linked to this account. Ask your StackPharmacy partner to link it.');
 
     const order = await rp.orders.create({
       amount: plan.amount,
@@ -3203,7 +3203,7 @@ app.post('/api/founder/tenants/:id/payment-link', requireAuth, requirePlatformAd
       currency: 'INR',
       accept_partial: false,
       reference_id: 'TP-' + paymentId + '-' + tenant.id + '-' + Date.now(),
-      description: 'MediStock ' + plan.label + ' — ' + tenant.store_name,
+      description: 'StackPharmacy ' + plan.label + ' — ' + tenant.store_name,
       customer: {
         name: tenant.owner_name,
         contact: String(tenant.phone).replace(/[^\d]/g, '').slice(-10),
@@ -3223,7 +3223,7 @@ app.post('/api/founder/tenants/:id/payment-link', requireAuth, requirePlatformAd
     const cleanPhone = String(tenant.phone).replace(/[^\d]/g, '').slice(-10);
     const waText = encodeURIComponent(
       `🏥 *Namaste ${tenant.owner_name} Ji (${tenant.store_name})*\n\n` +
-      `Aapka MediStock subscription renew karein — 100% secure payment page:\n` +
+      `Aapka StackPharmacy subscription renew karein — 100% secure payment page:\n` +
       `💳 *${plan.label}* — ₹${(plan.amount / 100).toLocaleString('en-IN')}\n\n` +
       `👇 Yahan se pay karein (UPI / Card / NetBanking):\n${shortUrl}\n\n` +
       `Payment hote hi aapka software turant ${plan.months} mahine ke liye activate ho jayega. Dhanyavaad!`
@@ -3304,7 +3304,7 @@ app.get('/api/referrals/summary', requireAuth, async (req, res, next) => {
 
     res.json({
       referral_code: tenant.referral_code,
-      referral_link: `https://medistock-pharma.vercel.app/signup?ref=${tenant.referral_code}`,
+      referral_link: `https://www.stackpharmacy.in/signup?ref=${tenant.referral_code}`,
       wallet_balance: tenant.wallet_balance || 0,
       total_earned: tenant.total_earned || 0,
       referred_count: referredStores.length,

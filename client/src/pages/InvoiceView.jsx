@@ -109,7 +109,7 @@ export default function InvoiceView() {
         </Box>
 
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mt: 3 }}>
-          Thank you for your visit! 💊<br />Generated via MediStock
+          Thank you for your visit! 💊<br />Generated via StackPharmacy
         </Typography>
       </Paper>
     </Box>

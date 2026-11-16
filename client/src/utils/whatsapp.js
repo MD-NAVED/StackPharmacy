@@ -2,7 +2,7 @@
  * WhatsApp Deep Link Builder with URL Length Guard (<1800 chars)
  */
 
-export function buildWhatsAppMessage(invoice, storeName = 'MediStock Pharmacy', baseUrl = '') {
+export function buildWhatsAppMessage(invoice, storeName = 'StackPharmacy', baseUrl = '') {
   const { sale, items = [] } = invoice || {};
   const digits = String(sale?.customer_phone || '').replace(/\D/g, '');
   const to = digits.length === 10 ? '91' + digits : digits;
@@ -24,7 +24,7 @@ export function buildWhatsAppMessage(invoice, storeName = 'MediStock Pharmacy', 
   fullLines.push(`*TOTAL: ₹${Number(sale?.total || 0).toFixed(2)}*`);
   fullLines.push('');
   fullLines.push(`📄 Invoice PDF: ${pdfUrl}`);
-  fullLines.push('_Sent via MediStock_');
+  fullLines.push('_Sent via StackPharmacy_');
 
   const fullText = fullLines.join('\n');
   const fullUrl = 'https://wa.me/' + to + '?text=' + encodeURIComponent(fullText);
@@ -47,7 +47,7 @@ export function buildWhatsAppMessage(invoice, storeName = 'MediStock Pharmacy', 
   fallbackLines.push(`📄 Poora bill PDF mein:`);
   fallbackLines.push(pdfUrl);
   fallbackLines.push('');
-  fallbackLines.push('_Sent via MediStock_');
+  fallbackLines.push('_Sent via StackPharmacy_');
 
   const fallbackText = fallbackLines.join('\n');
   const fallbackUrl = 'https://wa.me/' + to + '?text=' + encodeURIComponent(fallbackText);
@@ -55,6 +55,6 @@ export function buildWhatsAppMessage(invoice, storeName = 'MediStock Pharmacy', 
 }
 
 export function buildWhatsAppLink(invoice, storeName) {
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://medistock-pharma.vercel.app';
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://www.stackpharmacy.in';
   return buildWhatsAppMessage(invoice, storeName, origin).url;
 }

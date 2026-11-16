@@ -1,6 +1,6 @@
-// Minimal service worker for MediStock PWA installability + offline shell.
+// Minimal service worker for StackPharmacy PWA installability + offline shell.
 // API calls and index.html always go to the network; only static assets are cached.
-const CACHE = 'medistock-shell-v3';
+const CACHE = 'stackpharmacy-shell-v4';
 const SHELL = ['/manifest.webmanifest', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (event) => {

@@ -62,7 +62,7 @@ export default function AppLayout() {
       <Toolbar sx={{ px: 2 }}>
         <LocalPharmacyIcon sx={{ color: 'primary.main', mr: 1, fontSize: 30 }} />
         <Box>
-          <Typography sx={{ fontWeight: 800, letterSpacing: 0.5, lineHeight: 1.1 }}>MediStock</Typography>
+          <Typography sx={{ fontWeight: 800, letterSpacing: 0.5, lineHeight: 1.1 }}>{BRAND_NAME}</Typography>
           <Typography variant="caption" color="text.secondary">Pharmacy Manager</Typography>
         </Box>
       </Toolbar>

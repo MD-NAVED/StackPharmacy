@@ -454,7 +454,7 @@ export default function Billing() {
                   startIcon={<WhatsAppIcon />}
                   onClick={() => {
                     if (!can('whatsapp_bill')) { setUpgrade({ feature: 'whatsapp_bill', requiredTier: 'pro' }); return; }
-                    window.open(buildWhatsAppLink(invoice, settings?.store_name || 'MediStock Pharmacy'), '_blank', 'noopener');
+                    window.open(buildWhatsAppLink(invoice, settings?.store_name || 'StackPharmacy'), '_blank', 'noopener');
                     setWhatsappToast(true);
                   }}
                 >
