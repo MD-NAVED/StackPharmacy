@@ -48,6 +48,9 @@ const allowedOrigins = [
   /^http:\/\/localhost:\d+$/,        // Any local dev port
   /^http:\/\/127\.0\.0\.1:\d+$/,     // Any local 127.0.0.1 port
   /^https:\/\/.*\.vercel\.app$/,     // Any Vercel preview deployment
+  ...(process.env.CORS_ORIGINS
+    ? process.env.CORS_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean)
+    : []),
 ];
 app.use(cors({
   origin: (origin, callback) => {
@@ -1021,6 +1024,8 @@ const logScanDebug = (stage, details = {}) => {
     console.log(logLine);
   }
   try {
+    // Avoid unbounded disk log growth in production containers; stdout/stderr goes to CloudWatch/Vercel.
+    if (process.env.NODE_ENV === 'production' && process.env.ENABLE_FILE_LOGS !== 'true') return;
     const logsDir = path.resolve(__dirname, '../logs');
     if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir, { recursive: true });
     fs.appendFileSync(path.join(logsDir, 'scan_debug.log'), logLine + '\n', 'utf8');

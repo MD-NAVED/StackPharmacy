@@ -41,10 +41,13 @@ function invalidateRelatedCache(path) {
 // https://localhost (not capacitor://), so protocol sniffing misses it and
 // API calls would hit the app's own local server instead of the real API.
 const isNative = Capacitor.isNativePlatform();
-// Use VITE_API_BASE from env or fallback for web/native
-const API_BASE = (typeof process !== 'undefined' && process.env?.VITE_API_BASE)
+// Web stays same-origin ('') unless VITE_WEB_API_BASE is explicitly set (e.g. S3 without /api proxy).
+// Native (Capacitor Android/iOS) uses VITE_API_BASE or the production API domain.
+export const API_BASE = (typeof process !== 'undefined' && process.env?.VITE_API_BASE)
   ? process.env.VITE_API_BASE
-  : (isNative ? (import.meta.env?.VITE_API_BASE || 'https://api.stackpharmacy.in') : '');
+  : (isNative
+    ? (import.meta.env?.VITE_API_BASE || 'https://api.stackpharmacy.in')
+    : (import.meta.env?.VITE_WEB_API_BASE || ''));
 
 export async function api(path, { method = 'GET', body, signal, timeoutMs } = {}) {
   const token = typeof localStorage !== 'undefined'

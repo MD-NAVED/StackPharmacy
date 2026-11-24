@@ -4,7 +4,11 @@
   "private": true,
   "type": "commonjs",
   "scripts": {
-    "start": "node dev.js"
+    "start": "node dev.js",
+    "start:prod": "node server.js"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   },
   "dependencies": {
     "@sentry/node": "^10.74.0",

@@ -1,36 +1,42 @@
 const { Pool, types } = require('pg');
 const crypto = require('crypto');
+const fs = require('fs');
 
 // Return PostgreSQL DATE (OID 1082) as raw 'YYYY-MM-DD' string to avoid local timezone offsets
 types.setTypeParser(1082, (str) => str);
 
 const connectionString = process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/medistock';
 
-// TLS to the database only when the host is remote (e.g. Supabase on Vercel).
+// TLS to the database only when the host is remote (e.g. Supabase on Vercel or AWS RDS).
 // Local dev servers don't speak SSL, so connecting to localhost stays plain.
 const isLocalHost = /@(localhost|127\.0\.0\.1|\[::1\])[:/]/.test(connectionString);
 const useSsl = !!process.env.DATABASE_URL && !isLocalHost;
 
-// Certificate-chain verification for the remote database.
-// Supabase signs its database certificates with its own CA, so strict
-// verification needs that CA: set DATABASE_SSL_CA to the PEM content of
-// prod-ca-2021.crt from Supabase → Settings → Database.
-// Without a CA we keep traffic encrypted but accept Supabase's chain
-// (the same behaviour as sslmode=require, Supabase's serverless default).
+// Certificate-chain verification for remote Postgres (Supabase or AWS RDS).
+// DATABASE_SSL_CA accepts either raw PEM contents or a file path (e.g. /app/certs/global-bundle.pem).
+function loadSslCa(raw) {
+  if (!raw) return null;
+  if (raw.includes('BEGIN CERTIFICATE')) return raw;
+  try {
+    if (fs.existsSync(raw)) return fs.readFileSync(raw, 'utf8');
+  } catch { /* ignore invalid path */ }
+  return null;
+}
+
 let sslOptions = false;
 if (useSsl) {
-  const ca = process.env.DATABASE_SSL_CA && process.env.DATABASE_SSL_CA.includes('BEGIN CERTIFICATE')
-    ? process.env.DATABASE_SSL_CA
-    : null;
+  const ca = loadSslCa(process.env.DATABASE_SSL_CA);
   const verify = !!ca || process.env.DATABASE_SSL_MODE === 'verify';
   sslOptions = { rejectUnauthorized: verify, ...(ca ? { ca } : {}) };
 }
 
+// Keep pool=1 on serverless functions (Vercel), scale up to 10 on persistent servers (AWS/EC2/App Runner).
+const defaultPoolMax = process.env.VERCEL ? 1 : 10;
+
 const pool = new Pool({
   connectionString,
   ssl: sslOptions,
-  // In serverless, 1 connection per instance max avoids exhausting Supavisor/PostgreSQL.
-  max: Number(process.env.DATABASE_POOL_MAX) || 1,
+  max: Number(process.env.DATABASE_POOL_MAX) || defaultPoolMax,
   idleTimeoutMillis: 10_000,
   connectionTimeoutMillis: 15_000,
 });

@@ -1,0 +1,13 @@
+node_modules/
+.env
+.env.*
+.vercel/
+.mimosa/
+data/
+logs/
+*.log
+*.mp4
+test-*.js
+Dockerfile
+.dockerignore
+vercel.json
