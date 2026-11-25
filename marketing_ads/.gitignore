@@ -1,0 +1,15 @@
+# Blender backups & Python caches
+__pycache__/
+*.pyc
+*.blend1
+*/outputs/_tmp_*/
+
+# Large rendered/synthesized binaries (regenerate via Python + Blender/FFmpeg)
+*.mp4
+*.wav
+
+# Legacy root-level Ad #1 working copy (canonical archived source lives in ad1_bill_scanner/)
+/outputs/
+/textures/
+/*.py
+/*.blend
