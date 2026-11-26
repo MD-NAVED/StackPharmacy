@@ -160,7 +160,7 @@ Whenever a client-side fix (UI, service worker, caching, Sentry) requires a new 
      node -e "process.env.CAPACITOR_BUILD='true'; require('child_process').execSync('npx vite build', { stdio: 'inherit' });"
      ```
 2. **Verify Critical PWA Assets in `dist/`**:
-   - Confirm `client/dist/sw.js` excludes API routes: `url.pathname.startsWith('/api/')` and increments cache version (`stackpharmacy-shell-v6`).
+   - Confirm `client/dist/sw.js` excludes API routes: `url.pathname.startsWith('/api/')` and increments cache version (`stackpharmacy-shell-v7`).
    - Confirm `client/dist/assets/*.js` contains Sentry ingest configuration.
 3. **Bump Version in `client/android/app/build.gradle`**:
    - Increment `versionCode` (e.g., `13` $\rightarrow$ `14`).

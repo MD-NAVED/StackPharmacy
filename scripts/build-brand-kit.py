@@ -18,7 +18,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 DEFAULT_MASTER = (
     r"C:\Users\andyk\.gemini\antigravity\brain\4140c91b-119c-439f-947f-2c1e61208fca"
-    r"\concept_3_guard_3d_glass_1795678333258.jpg"
+    r"\concept_3_guard_3d_glass_fixed_1795680913042.jpg"
 )
 BRAND_DIR = os.path.join(ROOT, "brand")
 PUBLIC_DIR = os.path.join(ROOT, "client", "public")
