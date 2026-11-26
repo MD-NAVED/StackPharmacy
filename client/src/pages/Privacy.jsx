@@ -12,8 +12,8 @@ import {
   Link,
   Divider
 } from '@mui/material';
-import LocalPharmacyIcon from '@mui/icons-material/LocalPharmacy';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import BrandMark from '../components/BrandMark';
 import WhatsAppIcon from '@mui/icons-material/WhatsApp';
 import EmailIcon from '@mui/icons-material/Email';
 import ShieldIcon from '@mui/icons-material/Shield';
@@ -73,21 +73,7 @@ export default function Privacy() {
               color: 'inherit'
             }}
           >
-            <Box
-              sx={{
-                width: 36,
-                height: 36,
-                borderRadius: 2,
-                bgcolor: '#0F766E',
-                color: '#FFFFFF',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 2px 4px rgba(15,118,110,0.2)'
-              }}
-            >
-              <LocalPharmacyIcon sx={{ fontSize: 22 }} />
-            </Box>
+            <BrandMark size={36} />
             <Box>
               <Typography
                 variant="h6"
@@ -355,20 +341,7 @@ export default function Privacy() {
       >
         <Container maxWidth="md" disableGutters sx={{ textAlign: 'center' }}>
           <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1, mb: 1 }}>
-            <Box
-              sx={{
-                width: 28,
-                height: 28,
-                borderRadius: 1.5,
-                bgcolor: '#0F766E',
-                color: '#FFFFFF',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}
-            >
-              <LocalPharmacyIcon sx={{ fontSize: 18 }} />
-            </Box>
+            <BrandMark size={30} />
             <Typography variant="h6" sx={{ fontWeight: 800, color: '#FFFFFF', fontSize: '1.1rem' }}>
               {BRAND_NAME}
             </Typography>

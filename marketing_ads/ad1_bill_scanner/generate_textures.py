@@ -11,7 +11,7 @@ OUT_DIR = os.path.join(os.path.dirname(__file__), "textures")
 os.makedirs(OUT_DIR, exist_ok=True)
 
 ICON_PATH = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "client", "public", "icon-512.png")
+    os.path.join(os.path.dirname(__file__), "..", "..", "client", "public", "icon-512.png")
 )
 
 FONT_BOLD = r"C:\Windows\Fonts\segoeuib.ttf"

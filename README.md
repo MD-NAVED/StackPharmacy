@@ -1,3 +1,5 @@
+![StackPharmacy Banner](brand/stackpharmacy-readme-banner.png)
+
 # 🏥 StackPharmacy — Open-Source Cloud Pharmacy & Clinical Inventory System
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)

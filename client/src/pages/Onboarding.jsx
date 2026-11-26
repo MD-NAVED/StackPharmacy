@@ -24,7 +24,7 @@ import SignalCellularAltIcon from '@mui/icons-material/SignalCellularAlt';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import WhatsAppIcon from '@mui/icons-material/WhatsApp';
-import LocalPharmacyIcon from '@mui/icons-material/LocalPharmacy';
+import BrandMark from '../components/BrandMark';
 
 import {
   BRAND_NAME,
@@ -74,21 +74,7 @@ export default function Onboarding() {
       >
         <Container maxWidth="sm" disableGutters sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Box
-              sx={{
-                width: 36,
-                height: 36,
-                borderRadius: 2,
-                bgcolor: '#0F766E',
-                color: '#FFFFFF',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 2px 4px rgba(15,118,110,0.2)'
-              }}
-            >
-              <LocalPharmacyIcon sx={{ fontSize: 22 }} />
-            </Box>
+            <BrandMark size={36} />
             <Box>
               <Typography variant="h6" sx={{ fontWeight: 800, color: '#0F766E', lineHeight: 1.1, fontSize: '1.15rem' }}>
                 {BRAND_NAME}

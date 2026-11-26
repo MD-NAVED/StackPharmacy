@@ -5,8 +5,8 @@ import {
   List, ListItemButton, ListItemIcon, ListItemText, Tooltip, Avatar,
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
-import LocalPharmacyIcon from '@mui/icons-material/LocalPharmacy';
 import LogoutIcon from '@mui/icons-material/Logout';
+import BrandMark from '../components/BrandMark';
 import SpaceDashboardIcon from '@mui/icons-material/SpaceDashboard';
 import PointOfSaleIcon from '@mui/icons-material/PointOfSale';
 import MedicationIcon from '@mui/icons-material/Medication';
@@ -60,7 +60,7 @@ export default function AppLayout() {
   const drawer = (
     <Box>
       <Toolbar sx={{ px: 2 }}>
-        <LocalPharmacyIcon sx={{ color: 'primary.main', mr: 1, fontSize: 30 }} />
+        <BrandMark size={34} sx={{ mr: 1.25 }} />
         <Box>
           <Typography sx={{ fontWeight: 800, letterSpacing: 0.5, lineHeight: 1.1 }}>{BRAND_NAME}</Typography>
           <Typography variant="caption" color="text.secondary">Pharmacy Manager</Typography>
@@ -98,7 +98,7 @@ export default function AppLayout() {
           <IconButton edge="start" sx={{ mr: 1, display: { sm: 'none' } }} onClick={() => setMobileOpen(!mobileOpen)}>
             <MenuIcon />
           </IconButton>
-          <LocalPharmacyIcon sx={{ display: { xs: 'none', sm: 'block' }, color: 'primary.main', mr: 1 }} />
+          <BrandMark size={30} sx={{ display: { xs: 'none', sm: 'block' }, mr: 1.25 }} />
           <Typography variant="h6" sx={{ flex: '1 1 0', minWidth: 0, mr: 1, fontSize: { xs: 16, sm: 20 }, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {storeName || BRAND_NAME}
           </Typography>

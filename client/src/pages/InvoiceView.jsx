@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { Box, Typography, Paper, Button, CircularProgress } from '@mui/material';
 import PrintIcon from '@mui/icons-material/Print';
-import LocalPharmacyIcon from '@mui/icons-material/LocalPharmacy';
+import BrandMark from '../components/BrandMark';
 import { api } from '../api';
 import { fmt, fmtDate } from '../utils';
 
@@ -56,7 +56,7 @@ export default function InvoiceView() {
 
       <Paper sx={{ maxWidth: 480, mx: 'auto', p: { xs: 2.5, sm: 4 }, borderRadius: { xs: 0, sm: 2 } }} className="invoice-sheet">
         <Box sx={{ textAlign: 'center', borderBottom: '2px solid #0b695c', pb: 2, mb: 2 }}>
-          <LocalPharmacyIcon sx={{ fontSize: 40, color: '#0b695c' }} />
+          <BrandMark size={44} sx={{ mx: 'auto', mb: 1 }} />
           <Typography variant="h5" sx={{ fontWeight: 800, color: '#0b695c' }}>{store.name}</Typography>
           {store.address && <Typography variant="body2" color="text.secondary">{store.address}</Typography>}
           {(store.phone || store.gstin) && (

@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box, Card, CardContent, Typography, TextField, Button, InputAdornment,
-  Avatar, Alert, IconButton,
+  Alert, IconButton,
 } from '@mui/material';
-import LocalPharmacyIcon from '@mui/icons-material/LocalPharmacy';
 import StorefrontIcon from '@mui/icons-material/Storefront';
+import BrandMark from '../components/BrandMark';
 import PersonIcon from '@mui/icons-material/Person';
 import PhoneIcon from '@mui/icons-material/Phone';
 import LockIcon from '@mui/icons-material/Lock';
@@ -66,9 +66,7 @@ export default function SignUp() {
       <Card sx={{ width: 440, maxWidth: '100%', p: 1, borderRadius: 3 }}>
         <CardContent sx={{ p: 3 }}>
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 2.5 }}>
-            <Avatar sx={{ bgcolor: 'primary.main', width: 64, height: 64, mb: 1.5 }}>
-              <LocalPharmacyIcon sx={{ fontSize: 34 }} />
-            </Avatar>
+            <BrandMark size={68} radius="24%" sx={{ mb: 1.5, boxShadow: '0 6px 18px rgba(0, 77, 64, 0.28)' }} />
             <Typography variant="h5" sx={{ fontWeight: 800 }}>{BRAND_NAME}</Typography>
             <Typography variant="body2" color="text.secondary">
               Register your store — First Month Free (30-Day Trial)

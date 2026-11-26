@@ -68,6 +68,9 @@ def main():
         build_scene_3b(render=True)
         create_logo_sting_scene(is_vertical=False, render=True)
         create_logo_sting_scene(is_vertical=True, render=True)
+    elif mode == "render_sting":
+        create_logo_sting_scene(is_vertical=False, render=True)
+        create_logo_sting_scene(is_vertical=True, render=True)
     elif mode == "all":
         build_scene_1(render=True)
         build_scene_2(render=True)

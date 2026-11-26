@@ -9,7 +9,7 @@ from PIL import Image, ImageDraw, ImageFont
 DIR = os.path.dirname(os.path.abspath(__file__))
 OUT_DIR = os.path.join(DIR, "outputs")
 TEX_DIR = os.path.join(DIR, "textures")
-ICON_PATH = os.path.abspath(os.path.join(DIR, "..", "client", "public", "icon-512.png"))
+ICON_PATH = os.path.abspath(os.path.join(DIR, "..", "..", "client", "public", "icon-512.png"))
 
 FONT_BOLD = r"C:\Windows\Fonts\segoeuib.ttf"
 FONT_REG = r"C:\Windows\Fonts\segoeui.ttf"

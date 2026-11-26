@@ -2,14 +2,14 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box, Card, CardContent, Typography, TextField, Button, InputAdornment,
-  Avatar, Alert, IconButton,
+  Alert, IconButton,
 } from '@mui/material';
-import LocalPharmacyIcon from '@mui/icons-material/LocalPharmacy';
 import PersonIcon from '@mui/icons-material/Person';
 import LockIcon from '@mui/icons-material/Lock';
 import LoginIcon from '@mui/icons-material/Login';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
+import BrandMark from '../components/BrandMark';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import { BRAND_NAME } from '../config/branding';
@@ -53,9 +53,7 @@ export default function Login() {
       <Card sx={{ width: 400, maxWidth: '100%', p: 1 }}>
         <CardContent sx={{ p: 3 }}>
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 3 }}>
-            <Avatar sx={{ bgcolor: 'primary.main', width: 64, height: 64, mb: 1.5 }}>
-              <LocalPharmacyIcon sx={{ fontSize: 34 }} />
-            </Avatar>
+            <BrandMark size={68} radius="24%" sx={{ mb: 1.5, boxShadow: '0 6px 18px rgba(0, 77, 64, 0.28)' }} />
             <Typography variant="h5" sx={{ fontWeight: 800 }}>{BRAND_NAME}</Typography>
             <Typography variant="body2" color="text.secondary">Pharmacy Billing & Inventory</Typography>
           </Box>

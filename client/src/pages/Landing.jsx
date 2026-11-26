@@ -12,8 +12,8 @@ import {
   Link,
   Divider
 } from '@mui/material';
-import LocalPharmacyIcon from '@mui/icons-material/LocalPharmacy';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
+import BrandMark from '../components/BrandMark';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
 import SmartphoneIcon from '@mui/icons-material/Smartphone';
 import BoltIcon from '@mui/icons-material/Bolt';
@@ -89,21 +89,7 @@ export default function Landing() {
               color: 'inherit'
             }}
           >
-            <Box
-              sx={{
-                width: 36,
-                height: 36,
-                borderRadius: 2,
-                bgcolor: '#0F766E',
-                color: '#FFFFFF',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 2px 4px rgba(15,118,110,0.2)'
-              }}
-            >
-              <LocalPharmacyIcon sx={{ fontSize: 22 }} />
-            </Box>
+            <BrandMark size={36} />
             <Box>
               <Typography
                 variant="h6"
@@ -643,20 +629,7 @@ export default function Landing() {
       >
         <Container maxWidth="sm" disableGutters sx={{ textAlign: 'center' }}>
           <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1, mb: 1 }}>
-            <Box
-              sx={{
-                width: 28,
-                height: 28,
-                borderRadius: 1.5,
-                bgcolor: '#0F766E',
-                color: '#FFFFFF',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}
-            >
-              <LocalPharmacyIcon sx={{ fontSize: 18 }} />
-            </Box>
+            <BrandMark size={30} />
             <Typography variant="h6" sx={{ fontWeight: 800, color: '#FFFFFF', fontSize: '1.1rem' }}>
               {BRAND_NAME}
             </Typography>
