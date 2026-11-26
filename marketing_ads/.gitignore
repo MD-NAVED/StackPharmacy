@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 *.blend1
 */outputs/_tmp_*/
+*/outputs/previews/
 
 # Large rendered/synthesized binaries (regenerate via Python + Blender/FFmpeg)
 *.mp4
