@@ -1,7 +1,8 @@
 """
-Generates 6 crisp 2K (1600x980) Swiss-editorial SaaS cards for Ad #3
+Generates 6 minimalist Swiss-editorial 2K (1600x980) cards for Ad #3
 (Video 4 style 3D Stacked Card Cascade Reel in Blender 5.2).
-Uses Concept 3 transparent 3D Glass Shield + StackPharmacy emerald palette.
+Focus: high negative space, 1px hairline rules, Swiss 721 typography,
+zero bulky nested boxes, and 0.5-second scannability.
 """
 
 import os
@@ -13,15 +14,18 @@ ROOT_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", ".."))
 LOGO_MARK = os.path.join(ROOT_DIR, "client", "public", "logo-mark.png")
 os.makedirs(TEX_DIR, exist_ok=True)
 
-FONT_BOLD = r"C:\Windows\Fonts\segoeuib.ttf"
-FONT_SEMI = r"C:\Windows\Fonts\segoeuisb.ttf"
-FONT_REG = r"C:\Windows\Fonts\segoeui.ttf"
+SWISS_LIGHT = r"C:\Windows\Fonts\swissl.ttf"
+SWISS_REG = r"C:\Windows\Fonts\swiss.ttf"
+SWISS_BOLD = r"C:\Windows\Fonts\swissb.ttf"
+SEGOE_REG = r"C:\Windows\Fonts\segoeui.ttf"
+SEGOE_BOLD = r"C:\Windows\Fonts\segoeuib.ttf"
+MONO = r"C:\Windows\Fonts\consola.ttf"
 
 W, H = 1600, 980
 
 
 def font(path: str, size: int) -> ImageFont.FreeTypeFont:
-    for p in (path, FONT_BOLD, FONT_REG):
+    for p in (path, SWISS_REG, SEGOE_REG):
         if os.path.exists(p):
             try:
                 return ImageFont.truetype(p, size)
@@ -30,7 +34,7 @@ def font(path: str, size: int) -> ImageFont.FreeTypeFont:
     return ImageFont.load_default()
 
 
-def make_gradient(top_rgb, bot_rgb) -> Image.Image:
+def make_soft_gradient(top_rgb, bot_rgb) -> Image.Image:
     im = Image.new("RGBA", (W, H), (*top_rgb, 255))
     d = ImageDraw.Draw(im)
     for y in range(H):
@@ -42,48 +46,51 @@ def make_gradient(top_rgb, bot_rgb) -> Image.Image:
     return im
 
 
-def apply_subtle_grid(im: Image.Image, rgba=(255, 255, 255, 16), step_x=200, step_y=196) -> Image.Image:
-    """Alpha-composite hairline grid lines cleanly so lines stay ultra-subtle."""
-    ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    od = ImageDraw.Draw(ov)
-    for x in range(step_x, W, step_x):
-        od.line([(x, 0), (x, H)], fill=rgba, width=2)
-    for y in range(step_y, H, step_y):
-        od.line([(0, y), (W, y)], fill=rgba, width=2)
-    return Image.alpha_composite(im, ov)
+def draw_header(d: ImageDraw.ImageDraw, index_str: str, label: str, right_label: str, ink, muted, line_rgba):
+    f_idx = font(MONO, 24)
+    f_lbl = font(SWISS_REG, 24)
+    d.text((88, 62), index_str, font=f_idx, fill=muted)
+    d.text((146, 60), label, font=f_lbl, fill=ink)
+    if right_label:
+        rw = d.textlength(right_label, font=f_lbl)
+        d.text((W - 88 - rw, 60), right_label, font=f_lbl, fill=muted)
+    d.line([(88, 114), (W - 88, 114)], fill=line_rgba, width=1)
 
 
-def draw_check(d: ImageDraw.ImageDraw, cx, cy, sz, color, width=6):
-    pts = [
-        (cx - sz * 0.42, cy + sz * 0.02),
-        (cx - sz * 0.12, cy + sz * 0.36),
-        (cx + sz * 0.46, cy - sz * 0.34),
-    ]
-    d.line(pts, fill=color, width=width, joint="curve")
+def draw_text_with_rupee(d: ImageDraw.ImageDraw, xy, text: str, main_font, size: int, fill, bold_rupee=False):
+    """Draw Swiss 721 text cleanly while falling back to Segoe UI strictly for '₹' glyphs."""
+    if "₹" not in text:
+        d.text(xy, text, font=main_font, fill=fill)
+        return
+    f_rupee = font(SEGOE_BOLD if bold_rupee else SEGOE_REG, size)
+    x, y = xy
+    for part in text.partition("₹"):
+        if not part:
+            continue
+        f_use = f_rupee if part == "₹" else main_font
+        d.text((x, y - (4 if part == "₹" else 0)), part, font=f_use, fill=fill)
+        x += d.textlength(part, font=f_use)
 
 
 def card_1_brand_hero():
-    """Bold signature emerald-mint hero brand card."""
-    im = make_gradient((0, 105, 92), (5, 48, 42))
-    im = apply_subtle_grid(im, (255, 255, 255, 16))
+    """Minimalist deep forest emerald hero card."""
+    im = make_soft_gradient((6, 48, 42), (3, 25, 22))
     d = ImageDraw.Draw(im)
 
-    d.text((78, 62), "PHARMACY OS  •  INDIA", font=font(FONT_SEMI, 28), fill=(167, 243, 208, 220))
-    d.rounded_rectangle([W - 220, 48, W - 74, 102], radius=27, fill=(218, 241, 222, 245))
-    d.text((W - 196, 58), "v2.0 AI", font=font(FONT_BOLD, 28), fill=(5, 31, 32, 255))
+    draw_header(d, "01", "PHARMACY OS", "INDIA", (218, 241, 222, 235), (142, 182, 155, 190), (255, 255, 255, 36))
 
     if os.path.exists(LOGO_MARK):
-        ico = Image.open(LOGO_MARK).convert("RGBA").resize((360, 360), Image.LANCZOS)
-        im.alpha_composite(ico, (74, 240))
+        ico = Image.open(LOGO_MARK).convert("RGBA").resize((280, 280), Image.LANCZOS)
+        im.alpha_composite(ico, (88, 295))
 
-    d.text((468, 266), "Stack", font=font(FONT_BOLD, 168), fill=(255, 255, 255, 255))
-    d.text((468, 444), "Pharmacy", font=font(FONT_BOLD, 168), fill=(128, 203, 196, 255))
+    d.text((406, 298), "Stack", font=font(SWISS_BOLD, 162), fill=(255, 255, 255, 255))
+    d.text((406, 470), "Pharmacy", font=font(SWISS_LIGHT, 162), fill=(159, 227, 214, 245))
 
-    d.line([(78, 790), (W - 78, 790)], fill=(128, 203, 196, 255), width=2)
-    d.text((78, 834), "AI BILL SCANNER  •  FEFO EXPIRY GUARD", font=font(FONT_BOLD, 34), fill=(218, 241, 222, 245))
-    f_url = font(FONT_BOLD, 34)
+    d.line([(88, 820), (W - 88, 820)], fill=(255, 255, 255, 34), width=1)
+    d.text((88, 856), "AI BILL SCANNER   ·   EXPIRY GUARD", font=font(SWISS_REG, 24), fill=(142, 182, 155, 215))
+    f_url = font(SWISS_REG, 24)
     uw = d.textlength("stackpharmacy.in", font=f_url)
-    d.text((W - 78 - uw, 834), "stackpharmacy.in", font=f_url, fill=(255, 255, 255, 255))
+    d.text((W - 88 - uw, 856), "stackpharmacy.in", font=f_url, fill=(255, 255, 255, 230))
 
     p = os.path.join(TEX_DIR, "card_1_brand.png")
     im.convert("RGB").save(p, quality=96)
@@ -91,48 +98,47 @@ def card_1_brand_hero():
 
 
 def card_2_metrics_dark():
-    """Matte charcoal analytics & AI scanner metrics card."""
-    im = Image.new("RGBA", (W, H), (14, 22, 21, 255))
-    im = apply_subtle_grid(im, (255, 255, 255, 11))
+    """Matte obsidian Swiss tabular metrics card (zero nested boxes)."""
+    im = make_soft_gradient((16, 19, 19), (10, 12, 12))
     d = ImageDraw.Draw(im)
 
-    d.text((78, 58), "METRICS", font=font(FONT_SEMI, 28), fill=(142, 182, 155, 220))
-    d.text((540, 58), "0.8s", font=font(FONT_BOLD, 30), fill=(255, 255, 255, 255))
-    d.text((880, 58), "94%", font=font(FONT_BOLD, 30), fill=(255, 255, 255, 255))
-    d.text((1240, 58), "0%", font=font(FONT_BOLD, 30), fill=(77, 182, 172, 255))
-    d.line([(78, 122), (W - 78, 122)], fill=(45, 75, 70, 255), width=2)
+    # Top clean Swiss tabular header
+    f_idx = font(MONO, 24)
+    f_lbl = font(SWISS_REG, 24)
+    f_num = font(SWISS_BOLD, 28)
+    f_sub = font(SWISS_REG, 20)
 
-    d.rounded_rectangle([78, 172, 680, 896], radius=32, fill=(22, 42, 39, 255), outline=(45, 212, 191, 140), width=3)
-    d.text((124, 220), "AI BILL EXTRACTION", font=font(FONT_BOLD, 30), fill=(77, 182, 172, 255))
-    d.text((124, 288), "0.8s", font=font(FONT_BOLD, 174), fill=(255, 255, 255, 255))
-    d.text((124, 496), "AVERAGE SCAN TIME", font=font(FONT_SEMI, 30), fill=(180, 212, 206, 230))
+    d.text((88, 62), "02", font=f_idx, fill=(142, 182, 155, 210))
+    d.text((146, 60), "METRICS", font=f_lbl, fill=(255, 255, 255, 235))
 
+    cols = [(640, "0.8s", "SCAN"), (970, "99%", "ACCURACY"), (1290, "0%", "WASTE")]
+    for cx, val, cap in cols:
+        d.text((cx, 54), val, font=f_num, fill=(255, 255, 255, 255))
+        d.text((cx, 90), cap, font=f_sub, fill=(140, 160, 156, 200))
+    d.line([(88, 134), (W - 88, 134)], fill=(255, 255, 255, 32), width=1)
+
+    # Lower-left big hero metric (pure typography, zero box)
+    d.text((88, 430), "BILL EXTRACTION SPEED", font=font(SWISS_REG, 24), fill=(116, 207, 190, 220))
+    d.text((84, 480), "0.8s", font=font(SWISS_LIGHT, 230), fill=(255, 255, 255, 255))
+    d.text((88, 765), "Per multi-line distributor invoice", font=font(SWISS_LIGHT, 30), fill=(168, 182, 179, 215))
+
+    # Lower-right ultra-thin hairline bars
     bars = [
-        ("PRINTED BILLS", 0.94, (45, 212, 191)),
-        ("BATCH & EXPIRY", 0.98, (16, 185, 129)),
-        ("STOCK SYNC", 1.00, (218, 241, 222)),
+        ("OCR PARSE", "96%", 0.96, (94, 216, 198)),
+        ("FEFO SYNC", "99%", 0.99, (16, 185, 129)),
+        ("GST AUDIT", "100%", 1.00, (218, 241, 222)),
     ]
-    by = 595
-    for lbl, frac, col in bars:
-        d.text((124, by), lbl, font=font(FONT_SEMI, 22), fill=(180, 206, 200, 220))
-        d.rounded_rectangle([124, by + 34, 626, by + 56], radius=11, fill=(10, 20, 18, 255))
-        d.rounded_rectangle([124, by + 34, 124 + int(502 * frac), by + 56], radius=11, fill=(*col, 255))
-        by += 88
-
-    rows = [
-        ("CROCIN ADVANCE 500", "25 STRIPS  •  ₹18.40", "EXP 11/27", (45, 212, 191)),
-        ("DOLO 650 TABLETS", "50 STRIPS  •  ₹15.50", "EXP 03/28", (45, 212, 191)),
-        ("AUGMENTIN 625 DUO", "10 STRIPS  •  ₹162.00", "18D ALERT", (245, 158, 11)),
-        ("AZITHRAL 500 MG", "20 STRIPS  •  ₹72.00", "EXP 08/27", (45, 212, 191)),
-    ]
-    ry = 172
-    for name, sub, tag, badge_c in rows:
-        d.rounded_rectangle([730, ry, W - 78, ry + 158], radius=24, fill=(22, 34, 32, 255), outline=(55, 80, 75, 255), width=2)
-        d.text((774, ry + 32), name, font=font(FONT_BOLD, 34), fill=(255, 255, 255, 255))
-        d.text((774, ry + 84), sub, font=font(FONT_REG, 28), fill=(160, 192, 186, 235))
-        d.rounded_rectangle([W - 300, ry + 48, W - 110, ry + 106], radius=16, fill=(*badge_c, 255))
-        d.text((W - 280, ry + 60), tag, font=font(FONT_BOLD, 26), fill=(10, 20, 18, 255))
-        ry += 186
+    bx0, bx1 = 870, W - 88
+    by = 465
+    f_bar = font(SWISS_REG, 24)
+    f_pct = font(MONO, 24)
+    for lbl, pct, frac, col in bars:
+        d.text((bx0, by), lbl, font=f_bar, fill=(225, 235, 232, 230))
+        pw = d.textlength(pct, font=f_pct)
+        d.text((bx1 - pw, by), pct, font=f_pct, fill=(142, 182, 155, 220))
+        d.line([(bx0, by + 54), (bx1, by + 54)], fill=(255, 255, 255, 35), width=2)
+        d.line([(bx0, by + 54), (bx0 + int((bx1 - bx0) * frac), by + 54)], fill=(*col, 255), width=5)
+        by += 118
 
     p = os.path.join(TEX_DIR, "card_2_metrics.png")
     im.convert("RGB").save(p, quality=96)
@@ -140,43 +146,25 @@ def card_2_metrics_dark():
 
 
 def card_3_process_white():
-    """Crisp editorial off-white process card (contrasts dark cards cleanly)."""
-    im = Image.new("RGBA", (W, H), (247, 250, 249, 255))
-    im = apply_subtle_grid(im, (5, 31, 32, 14))
+    """Pure architectural off-white stepped typography card."""
+    im = make_soft_gradient((246, 248, 247), (239, 243, 241))
     d = ImageDraw.Draw(im)
 
-    d.text((84, 62), "HOW IT WORKS — 3 STEPS", font=font(FONT_BOLD, 30), fill=(0, 105, 92, 255))
-    d.line([(84, 120), (W - 84, 120)], fill=(205, 222, 218, 255), width=2)
+    draw_header(d, "03", "WORKFLOW", "3 STEPS", (12, 26, 24, 255), (102, 126, 120, 255), (5, 31, 32, 34))
 
-    steps = [
-        ("1", "PHOTO KHICHO", "Snap distributor bill or upload WhatsApp PDF", True),
-        ("2", "AI EXTRACTS", "Reads medicines, batch, expiry & GST rate", False),
-        ("3", "STOCK READY", "Auto-updates inventory + FEFO billing", False),
+    rows = [
+        ("01", "SCAN BILL", (8, 20, 18, 255), (0, 121, 107, 255)),
+        ("02", "TRACK EXPIRY", (66, 90, 84, 255), (110, 134, 128, 255)),
+        ("03", "BILL & KHATA", (124, 145, 140, 255), (146, 165, 160, 255)),
     ]
-    sy = 168
-    for num, title, desc, highlight in steps:
-        fill_c = (5, 31, 32, 255) if highlight else (255, 255, 255, 255)
-        txt_c = (255, 255, 255, 255) if highlight else (5, 31, 32, 255)
-        sub_c = (167, 243, 208, 240) if highlight else (71, 85, 105, 255)
-        d.rounded_rectangle([84, sy, 972, sy + 210], radius=28, fill=fill_c, outline=(0, 105, 92, 75), width=3)
-        d.rounded_rectangle([120, sy + 52, 216, sy + 158], radius=20, fill=(0, 121, 107, 255))
-        d.text((146, sy + 64), num, font=font(FONT_BOLD, 66), fill=(255, 255, 255, 255))
-        d.text((254, sy + 46), title, font=font(FONT_BOLD, 54), fill=txt_c)
-        d.text((254, sy + 118), desc, font=font(FONT_REG, 28), fill=sub_c)
-        sy += 244
-
-    # Right phone-card preview panel (clean width so all labels sit inside box with ample right pad)
-    d.rounded_rectangle([1018, 168, W - 78, 876], radius=34, fill=(5, 31, 32, 255))
-    d.rounded_rectangle([1050, 202, W - 110, 842], radius=24, fill=(242, 248, 246, 255))
-    d.rounded_rectangle([1050, 202, W - 110, 324], radius=24, fill=(0, 77, 64, 255))
-    d.rectangle([1050, 290, W - 110, 324], fill=(0, 77, 64, 255))
-    d.text((1096, 236), "AI SCANNER LIVE", font=font(FONT_BOLD, 34), fill=(255, 255, 255, 255))
-    for i, label in enumerate(["Batch Mapped", "Expiry Verified", "MRP & GST Synced", "Ready for POS"]):
-        iy = 368 + i * 100
-        d.rounded_rectangle([1084, iy, W - 144, iy + 78], radius=18, fill=(255, 255, 255, 255), outline=(0, 105, 92, 80), width=2)
-        d.ellipse([1106, iy + 18, 1148, iy + 60], fill=(0, 121, 107, 255))
-        draw_check(d, 1127, iy + 39, 22, (255, 255, 255, 255), width=5)
-        d.text((1170, iy + 22), label, font=font(FONT_BOLD, 27), fill=(15, 23, 42, 255))
+    ry = 225
+    f_n = font(MONO, 30)
+    f_t = font(SWISS_LIGHT, 104)
+    for num, word, ink, num_c in rows:
+        d.text((88, ry + 32), num, font=f_n, fill=num_c)
+        d.text((196, ry), word, font=f_t, fill=ink)
+        d.line([(88, ry + 156), (W - 88, ry + 156)], fill=(5, 31, 32, 28), width=1)
+        ry += 224
 
     p = os.path.join(TEX_DIR, "card_3_process.png")
     im.convert("RGB").save(p, quality=96)
@@ -184,30 +172,34 @@ def card_3_process_white():
 
 
 def card_4_expiry_guard():
-    """Deep emerald-noir expiry protection card."""
-    im = make_gradient((5, 31, 32), (16, 56, 50))
-    im = apply_subtle_grid(im, (142, 182, 155, 16))
+    """Minimalist charcoal-forest shift & FEFO protection card."""
+    im = make_soft_gradient((9, 28, 25), (5, 18, 16))
     d = ImageDraw.Draw(im)
 
-    d.text((84, 58), "EXPIRY GUARD  •  30 / 60 / 90 DAYS", font=font(FONT_BOLD, 28), fill=(142, 182, 155, 235))
-    d.text((84, 134), "NO MORE EXPIRED", font=font(FONT_BOLD, 102), fill=(255, 255, 255, 255))
-    d.text((84, 248), "MEDICINE LOSS.", font=font(FONT_BOLD, 102), fill=(77, 182, 172, 255))
+    draw_header(d, "04", "EXPIRY GUARD", "FEFO AUTOMATION", (220, 242, 234, 235), (142, 182, 155, 205), (255, 255, 255, 32))
 
-    alerts = [
-        ("CRITICAL • 18 DAYS", "Augmentin 625 Duo — Batch B94", "Return to distributor & save ₹4,800", (220, 38, 38)),
-        ("UPCOMING • 45 DAYS", "Pantoprazole 40mg — Batch P22", "Prioritize FEFO shelf counter sale", (245, 158, 11)),
-        ("SAFE • 2028 VALID", "All 1,420 active inventory batches", "Real-time cloud + WhatsApp alerts", (16, 185, 129)),
+    # Clean typographic contrast table on left, airy right stat
+    rows = [
+        ("BEFORE", "Manual Expiry Loss", (142, 166, 160, 210)),
+        ("SYSTEM", "30 / 60 / 90d Alerts", (116, 207, 190, 255)),
+        ("AFTER", "Zero Dead Stock", (255, 255, 255, 255)),
     ]
-    ay = 426
-    for pill, title, sub, col in alerts:
-        d.rounded_rectangle([84, ay, W - 84, ay + 148], radius=24, fill=(11, 43, 38, 240), outline=(*col, 210), width=3)
-        d.rounded_rectangle([118, ay + 44, 438, ay + 104], radius=16, fill=(*col, 255))
-        f_p = font(FONT_BOLD, 25)
-        pw = d.textlength(pill, font=f_p)
-        d.text((118 + (320 - pw) / 2, ay + 57), pill, font=f_p, fill=(255, 255, 255, 255))
-        d.text((472, ay + 30), title, font=font(FONT_BOLD, 38), fill=(255, 255, 255, 255))
-        d.text((472, ay + 84), sub, font=font(FONT_REG, 28), fill=(204, 242, 236, 225))
-        ay += 172
+    ry = 248
+    f_k = font(MONO, 24)
+    f_v = font(SWISS_LIGHT, 62)
+    for k, v, vc in rows:
+        d.text((88, ry + 20), k, font=f_k, fill=(142, 182, 155, 195))
+        d.text((290, ry), v, font=f_v, fill=vc)
+        d.line([(88, ry + 122), (960, ry + 122)], fill=(255, 255, 255, 28), width=1)
+        ry += 196
+
+    # Minimal subtle stat anchor on right (hairline accent, no boxy chrome)
+    d.line([(1060, 248), (1060, 760)], fill=(255, 255, 255, 28), width=1)
+    d.ellipse([1126, 294, 1144, 312], fill=(52, 211, 153, 255))
+    d.text((1162, 288), "ACTIVE MONITOR", font=font(MONO, 22), fill=(167, 243, 208, 225))
+    d.text((1122, 368), "90d", font=font(SWISS_LIGHT, 178), fill=(255, 255, 255, 255))
+    d.text((1126, 590), "Early Distributor", font=font(SWISS_REG, 32), fill=(176, 206, 200, 220))
+    d.text((1126, 634), "Return Window", font=font(SWISS_REG, 32), fill=(176, 206, 200, 220))
 
     p = os.path.join(TEX_DIR, "card_4_expiry.png")
     im.convert("RGB").save(p, quality=96)
@@ -215,31 +207,18 @@ def card_4_expiry_guard():
 
 
 def card_5_whatsapp_khata():
-    """Fresh mint-cream high-contrast feature card (#DAF1DE)."""
-    im = make_gradient((224, 246, 232), (248, 252, 249))
-    im = apply_subtle_grid(im, (5, 31, 32, 14))
+    """Soft sage-mint editorial typography card with crisp contrast against light studio."""
+    im = make_soft_gradient((206, 232, 216), (222, 241, 229))
     d = ImageDraw.Draw(im)
 
-    d.text((84, 58), "COUNTER POS  •  KHATA  •  MOBILE APP", font=font(FONT_BOLD, 28), fill=(0, 105, 92, 255))
-    d.text((84, 154), "BILLING & KHATA", font=font(FONT_BOLD, 118), fill=(5, 31, 32, 255))
-    d.text((84, 288), "ON WHATSAPP.", font=font(FONT_BOLD, 118), fill=(0, 121, 107, 255))
+    draw_header(d, "05", "COUNTER & KHATA", "WHATSAPP NATIVE", (5, 31, 32, 245), (56, 98, 88, 220), (5, 31, 32, 32))
 
-    chips = [
-        ("1-Tap Digital", "Bills", "Instant PDF invoice link", "directly on WhatsApp"),
-        ("Customer", "Udhaari Khata", "Zero-error balance and", "payment reminders"),
-        ("FEFO Smart", "Batch Rotation", "Sells earliest-expiry", "batch automatically"),
-    ]
-    cx = 84
-    cw = 456
-    for t1, t2, d1, d2 in chips:
-        d.rounded_rectangle([cx, 500, cx + cw, 876], radius=30, fill=(255, 255, 255, 255), outline=(0, 105, 92, 85), width=3)
-        d.rounded_rectangle([cx + 32, 536, cx + 100, 604], radius=18, fill=(0, 105, 92, 255))
-        draw_check(d, cx + 66, 570, 32, (255, 255, 255, 255), width=6)
-        d.text((cx + 32, 634), t1, font=font(FONT_BOLD, 38), fill=(5, 31, 32, 255))
-        d.text((cx + 32, 682), t2, font=font(FONT_BOLD, 38), fill=(0, 121, 107, 255))
-        d.text((cx + 32, 754), d1, font=font(FONT_REG, 26), fill=(71, 85, 105, 255))
-        d.text((cx + 32, 790), d2, font=font(FONT_REG, 26), fill=(71, 85, 105, 255))
-        cx += cw + 32
+    d.text((88, 258), "Digital Bills", font=font(SWISS_BOLD, 128), fill=(5, 31, 32, 255))
+    d.text((88, 404), "& Customer Khata.", font=font(SWISS_LIGHT, 128), fill=(0, 110, 96, 255))
+    d.text((88, 596), "One-tap WhatsApp invoice  ·  Zero manual register", font=font(SWISS_REG, 34), fill=(54, 82, 75, 230))
+
+    d.line([(88, 820), (W - 88, 820)], fill=(5, 31, 32, 34), width=1)
+    d.text((88, 856), "POS   ·   GST BILLING   ·   UDHAARI REMINDERS", font=font(MONO, 24), fill=(32, 74, 65, 210))
 
     p = os.path.join(TEX_DIR, "card_5_pos.png")
     im.convert("RGB").save(p, quality=96)
@@ -247,22 +226,24 @@ def card_5_whatsapp_khata():
 
 
 def card_6_cta_offer():
-    """Bold emerald offer hero card with giant editorial '1'."""
-    im = make_gradient((13, 148, 136), (0, 68, 58))
-    im = apply_subtle_grid(im, (255, 255, 255, 16))
+    """Minimalist signature emerald CTA card with edge-bleeding giant '1'."""
+    im = make_soft_gradient((12, 138, 121), (6, 82, 72))
     d = ImageDraw.Draw(im)
 
-    d.text((84, 62), "START TODAY  •  NO SETUP FEES", font=font(FONT_BOLD, 30), fill=(218, 241, 222, 240))
-    d.text((1040, 20), "1", font=font(FONT_BOLD, 760), fill=(255, 255, 255, 235))
+    draw_header(d, "06", "EARLY ACCESS", "NO SETUP FEES", (255, 255, 255, 235), (218, 241, 222, 200), (255, 255, 255, 42))
 
-    d.text((84, 184), "FIRST", font=font(FONT_BOLD, 138), fill=(255, 255, 255, 255))
-    d.text((84, 332), "MONTH", font=font(FONT_BOLD, 138), fill=(255, 255, 255, 255))
-    d.text((84, 480), "FREE.", font=font(FONT_BOLD, 138), fill=(253, 224, 71, 255))
+    # Giant Swiss architectural '1' bleeding softly on right like Noteform red '4'
+    d.text((1000, -10), "1", font=font(SWISS_BOLD, 880), fill=(255, 255, 255, 242))
 
-    d.text((84, 654), "Then ₹599/month  •  Cancel Anytime", font=font(FONT_BOLD, 40), fill=(224, 246, 238, 255))
+    d.text((88, 396), "First Month", font=font(SWISS_BOLD, 124), fill=(255, 255, 255, 255))
+    d.text((88, 536), "Free.", font=font(SWISS_LIGHT, 124), fill=(218, 241, 222, 255))
 
-    d.rounded_rectangle([84, 760, 880, 892], radius=34, fill=(5, 31, 32, 255), outline=(218, 241, 222, 230), width=4)
-    d.text((138, 796), "Try Free Now  •  stackpharmacy.in", font=font(FONT_BOLD, 42), fill=(255, 255, 255, 255))
+    d.line([(88, 720), (660, 720)], fill=(255, 255, 255, 72), width=1)
+    draw_text_with_rupee(
+        d, (88, 758),
+        "Then ₹599/mo  ·  stackpharmacy.in",
+        font(SWISS_REG, 36), 36, (238, 250, 244, 245), bold_rupee=False
+    )
 
     p = os.path.join(TEX_DIR, "card_6_offer.png")
     im.convert("RGB").save(p, quality=96)
@@ -278,7 +259,7 @@ def main():
         card_5_whatsapp_khata(),
         card_6_cta_offer(),
     ]
-    print("GENERATED_AD3_CARDS:")
+    print("GENERATED_AD3_MINIMAL_CARDS:")
     for p in paths:
         print(" -", p, os.path.getsize(p))
 

@@ -30,8 +30,8 @@ WAV_IN = os.path.join(TEX_DIR, "audio_cascade_8s.wav")
 
 CARD_W = 1.96
 CARD_H = 1.20
-CARD_THICK = 0.024
-CARD_R = 0.068
+CARD_THICK = 0.011
+CARD_R = 0.048
 
 N_CARDS = 6
 TOTAL_FRAMES = 240  # 8.0s @ 30fps seamless loop
@@ -62,10 +62,12 @@ def make_card_material(name: str, tex_path: str, edge_rgba):
         nt.nodes.remove(n)
     out = nt.nodes.new("ShaderNodeOutputMaterial")
     bsdf = nt.nodes.new("ShaderNodeBsdfPrincipled")
-    bsdf.inputs["Roughness"].default_value = 0.52
-    bsdf.inputs["Coat Weight"].default_value = 0.12
-    bsdf.inputs["Coat Roughness"].default_value = 0.18
-    bsdf.inputs["Emission Strength"].default_value = 0.58
+    bsdf.inputs["Roughness"].default_value = 0.64
+    if "Specular IOR Level" in bsdf.inputs:
+        bsdf.inputs["Specular IOR Level"].default_value = 0.22
+    bsdf.inputs["Coat Weight"].default_value = 0.05
+    bsdf.inputs["Coat Roughness"].default_value = 0.24
+    bsdf.inputs["Emission Strength"].default_value = 0.66
 
     tex = nt.nodes.new("ShaderNodeTexImage")
     img = bpy.data.images.load(tex_path, check_existing=True)
@@ -146,7 +148,7 @@ def create_3d_card(name: str, mat_face, mat_edge):
     for p in obj.data.polygons:
         p.use_smooth = True
     bev = obj.modifiers.new("RimBevel", 'BEVEL')
-    bev.width = 0.005
+    bev.width = 0.0022
     bev.segments = 3
     bev.limit_method = 'ANGLE'
     bev.angle_limit = math.radians(35.0)
@@ -188,8 +190,8 @@ def build_scene():
     fmat = bpy.data.materials.new("Mat_Studio_Floor")
     fmat.use_nodes = True
     fbsdf = next(n for n in fmat.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
-    fbsdf.inputs["Base Color"].default_value = (0.76, 0.80, 0.79, 1.0)
-    fbsdf.inputs["Roughness"].default_value = 0.88
+    fbsdf.inputs["Base Color"].default_value = (0.83, 0.85, 0.84, 1.0)
+    fbsdf.inputs["Roughness"].default_value = 0.90
     floor.data.materials.append(fmat)
 
     # Create 6 3D rounded cards + textures
@@ -241,8 +243,8 @@ def build_scene():
         lo.rotation_euler = (Vector(target) - Vector(loc)).to_track_quat('-Z', 'Y').to_euler()
         return lo
 
-    add_light("Key_TopLeft", 'AREA', (-4.2, 3.2, 5.8), (0.0, 0.0, 0.25), 540.0, 6.0, (1.0, 0.99, 0.98))
-    add_light("Fill_Right",  'AREA', ( 4.8, -2.5, 5.2), (0.0, 0.0, 0.25), 240.0, 7.0, (0.94, 0.99, 0.98))
+    add_light("Key_TopLeft", 'AREA', (-5.8, 4.4, 5.2), (0.0, 0.0, 0.25), 480.0, 5.5, (1.0, 0.99, 0.98))
+    add_light("Fill_Right",  'AREA', ( 4.8, -2.5, 5.2), (0.0, 0.0, 0.25), 200.0, 7.0, (0.94, 0.99, 0.98))
     add_light("Rim_Bottom",  'AREA', ( 0.0, -5.2, 3.2), (0.0, 0.0, 0.25), 140.0, 5.0, (0.88, 1.00, 0.96))
 
     # World gentle studio bounce
@@ -250,8 +252,8 @@ def build_scene():
     scene.world = world
     world.use_nodes = True
     wbg = next(n for n in world.node_tree.nodes if n.type == "BACKGROUND")
-    wbg.inputs["Color"].default_value = (0.76, 0.80, 0.79, 1.0)
-    wbg.inputs["Strength"].default_value = 0.65
+    wbg.inputs["Color"].default_value = (0.83, 0.85, 0.84, 1.0)
+    wbg.inputs["Strength"].default_value = 0.72
 
     # Vertical 9:16 Studio Camera aligned on same X axis (dx=0 => zero roll twist, center card stays dead horizontal!)
     cd = bpy.data.cameras.new("Cam_Cascade")
