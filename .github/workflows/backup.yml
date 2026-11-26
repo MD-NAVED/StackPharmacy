@@ -48,9 +48,9 @@ jobs:
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
         run: |
-          echo "::error title=Backup Failed::MediStock Nightly Database Backup FAILED. Check SUPABASE_DB_URL secret configuration and pg_dump connectivity."
+          echo "::error title=Backup Failed::StackPharmacy Nightly Database Backup FAILED. Check SUPABASE_DB_URL secret configuration and pg_dump connectivity."
           if [ -n "$SLACK_WEBHOOK" ]; then
-            curl -s -X POST -H 'Content-type: application/json' --data '{"text":"🚨 *MediStock Nightly Database Backup FAILED*. Check GitHub Actions logs immediately."}' "$SLACK_WEBHOOK" || true
+            curl -s -X POST -H 'Content-type: application/json' --data '{"text":"🚨 *StackPharmacy Nightly Database Backup FAILED*. Check GitHub Actions logs immediately."}' "$SLACK_WEBHOOK" || true
           else
             echo "Notice: SLACK_WEBHOOK not configured; check GitHub Actions workflow run logs for failure details."
           fi

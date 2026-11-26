@@ -1,6 +1,6 @@
-# MediStock Production Operations & Incident Runbook
+# StackPharmacy Production Operations & Incident Runbook
 
-This runbook provides actionable, click-level troubleshooting and recovery procedures for production operational issues in MediStock.
+This runbook provides actionable, click-level troubleshooting and recovery procedures for production operational issues in StackPharmacy.
 
 ---
 
@@ -17,7 +17,7 @@ This runbook provides actionable, click-level troubleshooting and recovery proce
 ## 3. Standing Deploy Checklist (Billing & Gateway Changes)
 
 Whenever any code change touches billing, subscriptions, payment signatures, or webhooks:
-1. **Pre-Deploy Webhook Check**: Verify the Razorpay webhook endpoint `https://medistock-api.vercel.app/api/billing/webhook` is active with event `payment.captured` and matching `RAZORPAY_WEBHOOK_SECRET`.
+1. **Pre-Deploy Webhook Check**: Verify the Razorpay webhook endpoint `https://api.stackpharmacy.in/api/billing/webhook` is active with event `payment.captured` and matching `RAZORPAY_WEBHOOK_SECRET`.
 2. **Execute ₹1 End-to-End Smoke Test**:
    - Create a test order and complete a real UPI checkout (₹1).
    - Verify the Razorpay `pay_XXXX` ID appears in the Razorpay Dashboard.
@@ -78,7 +78,7 @@ Whenever any code change touches billing, subscriptions, payment signatures, or 
      ```
    - **Razorpay Limitation Note**: Razorpay doesn't retain webhook bodies (the UI displays `null` for request body/response) and marks `200 OK` deliveries as complete with no manual "Resend" button (auto-retry only triggers on non-200 responses). Capture payloads in your own logging if you need replay capability.
    - If a webhook failed with 5xx/4xx, Razorpay's exponential auto-retry will retry automatically over 24 hours.
-   - To immediately activate a store without waiting: use the Founder Superadmin console at `https://medistock-admin.vercel.app/tenants` or run an administrative SQL update.
+   - To immediately activate a store without waiting: use the Founder Superadmin console at `https://admin.stackpharmacy.in/tenants` or run an administrative SQL update.
 
 ---
 
@@ -103,7 +103,7 @@ Whenever any code change touches billing, subscriptions, payment signatures, or 
    - Update `DATABASE_URL` (port 6543) and `DATABASE_DIRECT_URL` (port 5432) in Vercel `medistock-api`.
    - Update `SUPABASE_DB_URL` in GitHub Repository Secrets.
 3. **Post-Rotation Verification Checklist**:
-   - `curl -i https://medistock-api.vercel.app/api/health` $\rightarrow$ `connected: true`.
+   - `curl -i https://api.stackpharmacy.in/api/health` $\rightarrow$ `connected: true`.
    - Verify existing WhatsApp invoice link loads `200 OK` (unaffected because `INVOICE_SHARE_SECRET` is pinned).
    - Execute ₹1 live UPI smoke test to verify new webhook secret end-to-end.
    - Trigger manual GitHub Actions backup run to verify database dump succeeds.
@@ -160,7 +160,7 @@ Whenever a client-side fix (UI, service worker, caching, Sentry) requires a new 
      node -e "process.env.CAPACITOR_BUILD='true'; require('child_process').execSync('npx vite build', { stdio: 'inherit' });"
      ```
 2. **Verify Critical PWA Assets in `dist/`**:
-   - Confirm `client/dist/sw.js` excludes API routes: `url.pathname.startsWith('/api/')` and increments cache version (`medistock-shell-v3`).
+   - Confirm `client/dist/sw.js` excludes API routes: `url.pathname.startsWith('/api/')` and increments cache version (`stackpharmacy-shell-v4`).
    - Confirm `client/dist/assets/*.js` contains Sentry ingest configuration.
 3. **Bump Version in `client/android/app/build.gradle`**:
    - Increment `versionCode` (e.g., `13` $\rightarrow$ `14`).
@@ -179,9 +179,9 @@ Whenever a client-side fix (UI, service worker, caching, Sentry) requires a new 
 6. **Package Distribution Artifact**:
    - Output binary is generated at:
      `client/android/app/build/outputs/apk/release/app-release.apk` (~3.6MB).
-   - Copy to distribution location (root `./MediStock.apk`):
+   - Copy to distribution location (root `./StackPharmacy.apk`):
      ```bash
-     cp client/android/app/build/outputs/apk/release/app-release.apk ./MediStock.apk
+     cp client/android/app/build/outputs/apk/release/app-release.apk ./StackPharmacy.apk
      ```
    - **CRITICAL**: Never place the output APK inside `client/public/`. Vite copies `client/public/` into `client/dist/`, which Capacitor then bundles into Android assets, causing recursive APK bloat.
 7. **Sideload & Verify**:

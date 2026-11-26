@@ -1,4 +1,4 @@
-# MediStock WhatsApp Business API Integration Specification
+# StackPharmacy WhatsApp Business API Integration Specification
 
 > **Status**: Design / Pre-Implementation Specification  
 > **Approach**: Community-First, Zero-Overhead Rollout  
@@ -8,7 +8,7 @@
 
 ## 1. Executive Summary & Philosophy
 
-MediStock currently uses zero-cost native deep links (`https://wa.me/91...`) for:
+StackPharmacy currently uses zero-cost native deep links (`https://wa.me/91...`) for:
 - In-store customer bill dispatch with cryptographically pinned HMAC-SHA256 tokens (`/api/public/invoice/:id/pdf?t=...`).
 - Pharmacy owner daily hisaab (`/api/whatsapp/summary`).
 - Customer Khata (credit) payment reminders.
@@ -121,7 +121,7 @@ CREATE INDEX IF NOT EXISTS idx_wa_conv_store ON whatsapp_conversations(store_id)
 
 ### 2.3 Reusing Existing WhatsApp Outbox & Formatting Patterns
 
-The new integration builds directly upon tested patterns already present in MediStock:
+The new integration builds directly upon tested patterns already present in StackPharmacy:
 1. **Phone Number Sanitization**: Reuses the regex normalizer in `server/index.js:2719` (`phone.replace(/\D/g, '').slice(-10)` -> prepended with `91`).
 2. **URL Length Guard**: Adheres to the `<1800` character limit established in `client/src/utils/whatsapp.js` to ensure links and payload parameters never truncate.
 3. **Daily Summary Aggregator**: Reuses the exact aggregation query from `GET /api/whatsapp/summary` (`server/index.js:1551`) for `aaj ka hisaab`.
@@ -139,7 +139,7 @@ The bot operates with a dual-language (Hinglish + English) intent matcher tailor
 | **Subscription Activation** | *"Payment ho gaya par Starter nahi dikha"*, *"money cut but no upgrade"* | Explains webhook processing flow (Incident D). Asks for Razorpay Payment ID (`pay_...`), checks status against `tenant_payments`, or reconciles instantly. |
 | **Printer Setup** | *"Thermal printer kaise jodein"*, *"slip print nahi ho rahi"*, *"receipt cut nahi ho rahi"* | Provides click-level steps for 58mm / 80mm ESC/POS USB and Bluetooth thermal printers on Chrome Android / Windows. |
 | **Barcode Scanner Setup** | *"Scanner kaam nahi kar raha"*, *"barcode scan nahi ho raha"* | Explains plug-and-play USB HID keyboard emulation mode and USB OTG adapter activation on Android phones. |
-| **Offline Billing** | *"Net disconnect ho gaya to bill banega?"*, *"wifi off hone par kya karein"* | Clarifies that MediStock Service Worker v3 caches the POS shell; bills can be rung up offline and sync automatically once online. |
+| **Offline Billing** | *"Net disconnect ho gaya to bill banega?"*, *"wifi off hone par kya karein"* | Clarifies that StackPharmacy Service Worker v4 caches the POS shell; bills can be rung up offline and sync automatically once online. |
 | **Khata / Udhaari** | *"Customer ki baiki kaise dekhein"*, *"udhaari ka payment link"* | Explains how to open Khata screen -> tap WhatsApp icon next to customer to send automatic UPI payment link. |
 | **Inventory CSV Import** | *"Stock ek sath excel se kaise dalein"*, *"bulk upload format"* | Explains Settings -> Inventory Import -> download sample CSV template -> note the 3 imports / 10 min rate limit. |
 
@@ -156,7 +156,7 @@ When a pharmacy owner messages the WhatsApp Business number, the bot detects the
   - Returns top 3 matching medicines with current batch, total stock, rack location, MRP, and expiry date.
 * **Sample Response**:
   ```text
-  📦 MediStock Inventory
+  📦 StackPharmacy Inventory
   Found 1 match for "dolo 650":
 
   • DOLO 650 MG TABLET
@@ -197,7 +197,7 @@ When a pharmacy owner messages the WhatsApp Business number, the bot detects the
   Total: ₹450.00 (3 items) | Paid via UPI
 
   View & Download Bill:
-  👉 https://medistock-pos.vercel.app/public/invoice/42?t=e3b0c44...
+  👉 https://www.stackpharmacy.in/public/invoice/42?t=e3b0c44...
   ```
 
 ---
@@ -216,13 +216,13 @@ When a query is ambiguous, emotionally urgent, or requests human intervention, a
 2. **State Lock**: `whatsapp_conversations.state` is set to `'human_handoff'` with `human_handoff_until = NOW() + INTERVAL '2 hours'`. The automated bot is muted for this sender so it does not interrupt a human conversation.
 3. **Founder WhatsApp Alert**: The system dispatches an alert template to the founder's verified mobile number:
    ```text
-   🚨 MediStock Support Alert
+   🚨 StackPharmacy Support Alert
    Store: City Medico (ID: #11)
    Owner: Naved (+91 98765 43210)
    Issue: "Printer connect nahi ho raha bluetooth se"
 
    👉 Click to chat with owner:
-   https://wa.me/919876543210?text=Hi%20Naved,%20MediStock%20support%20se%20baat%20kar%20raha%20hu
+   https://wa.me/919876543210?text=Hi%20Naved,%20StackPharmacy%20support%20se%20baat%20kar%20raha%20hu
    ```
 
 ---
@@ -231,7 +231,7 @@ When a query is ambiguous, emotionally urgent, or requests human intervention, a
 
 Meta categorizes WhatsApp Cloud API conversations into 4 billing buckets (24-hour window per conversation):
 
-| Conversation Category | Description | India Rate (Per 24h Window) | MediStock Usage |
+| Conversation Category | Description | India Rate (Per 24h Window) | StackPharmacy Usage |
 |---|---|:---:|---|
 | **Service (User-Initiated)** | Inbound bot queries (`stock`, `aaj ka hisaab`, FAQ) | **FREE for first 1,000 / mo**; then ~₹0.35 | Primary mode for bot interactions. |
 | **Utility (Business-Initiated)** | Bill dispatch, expiry alerts, low-stock alerts | ~₹0.11 - ₹0.15 | Scheduled summaries and customer bills. |
@@ -240,7 +240,7 @@ Meta categorizes WhatsApp Cloud API conversations into 4 billing buckets (24-hou
 
 ### 6.1 Projected Operating Costs by Milestone
 
-| Milestone | Active Stores | Estimated Monthly Conversations | Free Tier Offsets | Net Monthly Cost to MediStock | Revenue Offset |
+| Milestone | Active Stores | Estimated Monthly Conversations | Free Tier Offsets | Net Monthly Cost to StackPharmacy | Revenue Offset |
 |---|:---:|:---:|:---:|:---:|:---:|
 | **Alpha (Current)** | 1–5 | ~150 service conversations | 1,000 free | **₹0.00 / month** | Self-funded |
 | **Milestone 1** | 25 | ~750 service + 200 utility | 1,000 free | **< ₹30 / month** | ₹7,475 MRR (Starter/Pro) |
@@ -264,11 +264,11 @@ Direct WhatsApp Cloud API access requires zero ongoing aggregator fees (avoiding
   - Drug License (Form 20/21) in the name of the business entity.
   - Shop & Establishment Certificate.
 - [ ] **4. Address & Phone Proof**: Utility bill (electricity/telephone) or bank account statement with exact legal name and matching address.
-- [ ] **5. Official Website (`https://medistock.in`)**:
+- [ ] **5. Official Website (`https://www.stackpharmacy.in`)**:
   - Must display legal business name in footer.
   - Must display Contact Us (matching registered email/phone).
   - Must have active Privacy Policy and Terms of Service links.
-- [ ] **6. Display Name Compliance**: Display name (e.g. `MediStock Assistant` or `MediStock Support`) must adhere strictly to Meta's Display Name Guidelines.
+- [ ] **6. Display Name Compliance**: Display name (e.g. `StackPharmacy Assistant` or `StackPharmacy Support`) must adhere strictly to Meta's Display Name Guidelines.
 
 ---
 
@@ -276,7 +276,7 @@ Direct WhatsApp Cloud API access requires zero ongoing aggregator fees (avoiding
 
 ```mermaid
 gantt
-    title MediStock WhatsApp Rollout Phasing
+    title StackPharmacy WhatsApp Rollout Phasing
     dateFormat  YYYY-MM
     section Phase 0: Native Zero-Cost
     Deep Link Bills & Daily Summary (wa.me)    :active, p0, 2026-09, 2026-10

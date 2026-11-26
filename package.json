@@ -1,8 +1,8 @@
 {
-  "name": "medistock",
+  "name": "stackpharmacy",
   "version": "1.4.7",
   "private": true,
-  "description": "MediStock - Pharmacy Billing & Inventory Management System",
+  "description": "StackPharmacy - Pharmacy Billing & Inventory Management System",
   "scripts": {
     "setup": "npm install && npm run setup:server && npm run setup:client",
     "setup:server": "cd server && npm install",

@@ -1,4 +1,4 @@
-# MediStock Load Testing Benchmark Report (100-Store Concurrency Profile)
+# StackPharmacy Load Testing Benchmark Report (100-Store Concurrency Profile)
 
 **Date:** 2026-09-11  
 **Target Profile:** 50 Concurrent Counter Invocations (Peak Busy Hour) + 20 Concurrent Report Analytics

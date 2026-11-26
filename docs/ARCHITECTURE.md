@@ -1,13 +1,13 @@
-# MediStock Production Architecture & Hardening Guide
+# StackPharmacy Production Architecture & Hardening Guide
 
 ## 1. Executive Summary & Stack Overview
 
-MediStock is a high-availability, multi-tenant pharmacy Point-of-Sale (POS) and inventory management SaaS platform designed for retail pharmacies.
+StackPharmacy is a high-availability, multi-tenant pharmacy Point-of-Sale (POS) and inventory management SaaS platform designed for retail pharmacies.
 
-* **API Runtime**: Node.js + Express hosted on Vercel Serverless (`medistock-api.vercel.app`).
+* **API Runtime**: Node.js + Express hosted on Vercel Serverless (`api.stackpharmacy.in`).
 * **Database Driver**: `pg` (`node-postgres` v8.12.0) utilizing parameterized SQL (`$1, $2, ...`) and explicit transaction lifecycle blocks (`BEGIN / COMMIT / ROLLBACK`).
-* **Database Layer**: PostgreSQL on Supabase.
-* **Frontend**: React (Vite, Material-UI) deployed on Vercel (`medistock-pharma.vercel.app`) and packaged natively for Android via Capacitor.
+* **Database Layer**: PostgreSQL on Supabase (with AWS RDS PostgreSQL migration readiness — see [`AWS_MIGRATION_GUIDE.md`](AWS_MIGRATION_GUIDE.md)).
+* **Frontend**: React (Vite, Material-UI) deployed on Vercel (`www.stackpharmacy.in`) and packaged natively for Android via Capacitor.
 * **Payment Gateway**: Razorpay Live Checkout and Server-to-Server Webhook (`payment.captured`).
 
 ---
@@ -85,7 +85,7 @@ The health endpoint provides real-time latency and database connectivity metrics
 ### Request
 ```http
 GET /api/health HTTP/1.1
-Host: medistock-api.vercel.app
+Host: api.stackpharmacy.in
 ```
 
 ### Successful Response (`200 OK`)

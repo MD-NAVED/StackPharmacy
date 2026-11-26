@@ -1,8 +1,8 @@
-# Contributing to MediStock
+# Contributing to StackPharmacy
 
-Thank you for your interest in contributing to **MediStock**! We welcome contributions from developers, healthcare technologists, and clinical operations professionals.
+Thank you for your interest in contributing to **StackPharmacy**! We welcome contributions from developers, healthcare technologists, and clinical operations professionals.
 
-MediStock is an open-source clinical pharmacy and inventory system. To maintain code reliability, patient safety standards, and multi-tenant isolation, please follow these guidelines.
+StackPharmacy is an open-source clinical pharmacy and inventory system. To maintain code reliability, patient safety standards, and multi-tenant isolation, please follow these guidelines.
 
 ---
 
@@ -16,7 +16,7 @@ MediStock is an open-source clinical pharmacy and inventory system. To maintain 
 ## 🐛 Reporting Issues & Feature Requests
 
 ### Reporting Bugs
-1. **Search existing issues**: Before creating a new issue, check the [Issue Tracker](https://github.com/MD-NAVED/medistock/issues) to ensure it has not already been reported.
+1. **Search existing issues**: Before creating a new issue, check the [Issue Tracker](https://github.com/MD-NAVED/StackPharmacy/issues) to ensure it has not already been reported.
 2. **Use a descriptive title**: Briefly describe the problem and the affected component (e.g., `[POS] FEFO allocation deducts incorrect batch on fractional return`).
 3. **Provide reproduction steps**:
    * Expected behavior vs. actual behavior.
@@ -51,8 +51,8 @@ When creating branches, use the following naming convention:
 ### 1. Fork & Clone
 Fork the repository on GitHub and clone your fork locally:
 ```bash
-git clone https://github.com/<your-username>/medistock.git
-cd medistock
+git clone https://github.com/<your-username>/StackPharmacy.git
+cd StackPharmacy
 ```
 
 ### 2. Set Up Environment
@@ -84,7 +84,7 @@ git checkout -b feat/your-feature-name
    ```bash
    git push origin feat/your-feature-name
    ```
-2. Open a Pull Request against the `main` branch of `MD-NAVED/medistock`.
+2. Open a Pull Request against the `main` branch of `MD-NAVED/StackPharmacy`.
 3. Provide a clear PR description detailing:
    * Summary of changes.
    * Motivation & context.
@@ -94,4 +94,4 @@ git checkout -b feat/your-feature-name
 ---
 
 ## 📜 License
-By contributing to MediStock, you agree that your contributions will be licensed under the project's [MIT License](LICENSE).
+By contributing to StackPharmacy, you agree that your contributions will be licensed under the project's [MIT License](LICENSE).
