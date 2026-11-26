@@ -81,16 +81,16 @@ def card_1_brand_hero():
 
     if os.path.exists(LOGO_MARK):
         ico = Image.open(LOGO_MARK).convert("RGBA").resize((280, 280), Image.LANCZOS)
-        im.alpha_composite(ico, (88, 295))
+        im.alpha_composite(ico, (88, 245))
 
-    d.text((406, 298), "Stack", font=font(SWISS_BOLD, 162), fill=(255, 255, 255, 255))
-    d.text((406, 470), "Pharmacy", font=font(SWISS_LIGHT, 162), fill=(159, 227, 214, 245))
+    d.text((406, 248), "Stack", font=font(SWISS_BOLD, 162), fill=(255, 255, 255, 255))
+    d.text((406, 420), "Pharmacy", font=font(SWISS_LIGHT, 162), fill=(159, 227, 214, 245))
 
-    d.line([(88, 820), (W - 88, 820)], fill=(255, 255, 255, 34), width=1)
-    d.text((88, 856), "AI BILL SCANNER   ·   EXPIRY GUARD", font=font(SWISS_REG, 24), fill=(142, 182, 155, 215))
+    d.line([(88, 728), (W - 88, 728)], fill=(255, 255, 255, 34), width=1)
+    d.text((88, 760), "AI BILL SCANNER   ·   EXPIRY GUARD", font=font(SWISS_REG, 24), fill=(142, 182, 155, 215))
     f_url = font(SWISS_REG, 24)
     uw = d.textlength("stackpharmacy.in", font=f_url)
-    d.text((W - 88 - uw, 856), "stackpharmacy.in", font=f_url, fill=(255, 255, 255, 230))
+    d.text((W - 88 - uw, 760), "stackpharmacy.in", font=f_url, fill=(255, 255, 255, 230))
 
     p = os.path.join(TEX_DIR, "card_1_brand.png")
     im.convert("RGB").save(p, quality=96)
@@ -157,14 +157,14 @@ def card_3_process_white():
         ("02", "TRACK EXPIRY", (66, 90, 84, 255), (110, 134, 128, 255)),
         ("03", "BILL & KHATA", (124, 145, 140, 255), (146, 165, 160, 255)),
     ]
-    ry = 225
+    ry = 192
     f_n = font(MONO, 30)
-    f_t = font(SWISS_LIGHT, 104)
+    f_t = font(SWISS_LIGHT, 98)
     for num, word, ink, num_c in rows:
-        d.text((88, ry + 32), num, font=f_n, fill=num_c)
+        d.text((88, ry + 30), num, font=f_n, fill=num_c)
         d.text((196, ry), word, font=f_t, fill=ink)
-        d.line([(88, ry + 156), (W - 88, ry + 156)], fill=(5, 31, 32, 28), width=1)
-        ry += 224
+        d.line([(88, ry + 142), (W - 88, ry + 142)], fill=(5, 31, 32, 28), width=1)
+        ry += 200
 
     p = os.path.join(TEX_DIR, "card_3_process.png")
     im.convert("RGB").save(p, quality=96)
@@ -184,14 +184,14 @@ def card_4_expiry_guard():
         ("SYSTEM", "30 / 60 / 90d Alerts", (116, 207, 190, 255)),
         ("AFTER", "Zero Dead Stock", (255, 255, 255, 255)),
     ]
-    ry = 248
+    ry = 212
     f_k = font(MONO, 24)
-    f_v = font(SWISS_LIGHT, 62)
+    f_v = font(SWISS_LIGHT, 60)
     for k, v, vc in rows:
-        d.text((88, ry + 20), k, font=f_k, fill=(142, 182, 155, 195))
+        d.text((88, ry + 18), k, font=f_k, fill=(142, 182, 155, 195))
         d.text((290, ry), v, font=f_v, fill=vc)
-        d.line([(88, ry + 122), (960, ry + 122)], fill=(255, 255, 255, 28), width=1)
-        ry += 196
+        d.line([(88, ry + 114), (960, ry + 114)], fill=(255, 255, 255, 28), width=1)
+        ry += 176
 
     # Minimal subtle stat anchor on right (hairline accent, no boxy chrome)
     d.line([(1060, 248), (1060, 760)], fill=(255, 255, 255, 28), width=1)
@@ -235,12 +235,12 @@ def card_6_cta_offer():
     # Giant Swiss architectural '1' bleeding softly on right like Noteform red '4'
     d.text((1000, -10), "1", font=font(SWISS_BOLD, 880), fill=(255, 255, 255, 242))
 
-    d.text((88, 396), "First Month", font=font(SWISS_BOLD, 124), fill=(255, 255, 255, 255))
-    d.text((88, 536), "Free.", font=font(SWISS_LIGHT, 124), fill=(218, 241, 222, 255))
+    d.text((88, 316), "First Month", font=font(SWISS_BOLD, 124), fill=(255, 255, 255, 255))
+    d.text((88, 456), "Free.", font=font(SWISS_LIGHT, 124), fill=(218, 241, 222, 255))
 
-    d.line([(88, 720), (660, 720)], fill=(255, 255, 255, 72), width=1)
+    d.line([(88, 636), (660, 636)], fill=(255, 255, 255, 72), width=1)
     draw_text_with_rupee(
-        d, (88, 758),
+        d, (88, 674),
         "Then ₹599/mo  ·  stackpharmacy.in",
         font(SWISS_REG, 36), 36, (238, 250, 244, 245), bold_rupee=False
     )

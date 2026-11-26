@@ -28,25 +28,25 @@ MP4_SILENT = os.path.join(OUT_DIR, "_tmp_silent_cascade.mp4")
 MP4_FINAL = os.path.join(OUT_DIR, "StackPharmacy_CardCascade_Reels_1080x1920.mp4")
 WAV_IN = os.path.join(TEX_DIR, "audio_cascade_8s.wav")
 
-CARD_W = 1.96
-CARD_H = 1.20
+CARD_W = 1.98
+CARD_H = 1.21
 CARD_THICK = 0.011
 CARD_R = 0.048
 
 N_CARDS = 6
-TOTAL_FRAMES = 240  # 8.0s @ 30fps seamless loop
+TOTAL_FRAMES = 240  # 8.0s @ 30fps seamless Up <-> Down loop
 FPS = 30
-ARC_PIVOT_X = -5.4
-ARC_RADIUS = 5.4
-SLOT_ANGLE_RAD = math.radians(13.6)
 
+# Ordered Top (idx=0) -> Bottom (idx=5) just like Noteform diagonal cascade:
+# Top emerald offer ("1") -> Dark Expiry -> White Workflow -> Obsidian Metrics ->
+# Forest Brand + Shield -> Bottom Sage Khata
 CARD_SPECS = [
-    ("Card_1_Brand",   "card_1_brand.png",   (0.01, 0.14, 0.12, 1.0)),
-    ("Card_2_Metrics", "card_2_metrics.png", (0.04, 0.07, 0.07, 1.0)),
+    ("Card_1_Offer",   "card_6_offer.png",   (0.02, 0.24, 0.21, 1.0)),
+    ("Card_2_Expiry",  "card_4_expiry.png",  (0.02, 0.12, 0.11, 1.0)),
     ("Card_3_Process", "card_3_process.png", (0.86, 0.90, 0.89, 1.0)),
-    ("Card_4_Expiry",  "card_4_expiry.png",  (0.02, 0.12, 0.11, 1.0)),
-    ("Card_5_POS",     "card_5_pos.png",     (0.80, 0.92, 0.85, 1.0)),
-    ("Card_6_Offer",   "card_6_offer.png",   (0.02, 0.24, 0.21, 1.0)),
+    ("Card_4_Metrics", "card_2_metrics.png", (0.04, 0.07, 0.07, 1.0)),
+    ("Card_5_Brand",   "card_1_brand.png",   (0.01, 0.14, 0.12, 1.0)),
+    ("Card_6_POS",     "card_5_pos.png",     (0.76, 0.88, 0.81, 1.0)),
 ]
 
 
@@ -155,27 +155,68 @@ def create_3d_card(name: str, mat_face, mat_edge):
     return obj
 
 
+def smooth_step5(x: float) -> float:
+    """Quintic C2 ease (zero jerk at start/end of every Up and Down travel)."""
+    x = max(0.0, min(1.0, x))
+    return x * x * x * (x * (x * 6.0 - 15.0) + 10.0)
+
+
+def up_down_wave(tau: float) -> float:
+    """
+    Seamless 0..1..0 Up-and-Down accordion envelope over tau in [0, 1):
+      0.00..0.06 : settled Down pose (showcases top cards cleanly)
+      0.06..0.44 : silky ease UP to Peak UP pose
+      0.44..0.56 : poised linger at Peak UP (showcases lower brand/offer cards cleanly)
+      0.56..0.94 : silky ease DOWN back to resting start
+      0.94..1.00 : settled Down linger -> exact match at frame 1 & frame 240
+    """
+    tau = tau % 1.0
+    if tau < 0.06:
+        return 0.0
+    if tau < 0.44:
+        return smooth_step5((tau - 0.06) / 0.38)
+    if tau < 0.56:
+        return 1.0
+    if tau < 0.94:
+        return 1.0 - smooth_step5((tau - 0.56) / 0.38)
+    return 0.0
+
+
 def slot_motion(frame_zero_based: int, card_idx: int):
     """
-    Continuous seamless 8.0s loop across N=6 cards with subtle rhythmic beat linger
-    as each card reaches the center hero angle.
+    True Up-and-Down Accordion Cascade (locked studio camera, zero circular wheel):
+    Every card glides distinctly UPWARD during w=0->1 (+0.29m to +1.59m vertical travel)
+    while unfolding open (spacing_y 0.80 -> 1.06), then glides smoothly BACK DOWN to base.
     """
-    u_lin = (frame_zero_based / float(TOTAL_FRAMES)) * float(N_CARDS)  # 0..6
-    # Strictly monotonic rhythmic wave: slows smoothly at each integer card stop
-    u = u_lin + 0.24 * math.sin(2.0 * math.pi * u_lin) / (2.0 * math.pi)
-    # Offset so Card 1 starts prominently near hero center at frame 1
-    s = ((card_idx + u + 3.0) % float(N_CARDS)) - 3.0  # [-3.0, +3.0)
+    tau_base = frame_zero_based / float(TOTAL_FRAMES)
 
-    theta = s * SLOT_ANGLE_RAD
-    cx = ARC_PIVOT_X + ARC_RADIUS * math.cos(theta)
-    cy = ARC_RADIUS * math.sin(theta)
-    cz = 0.28
+    # Sequential accordion ripple across the 6 cards (~6 frames stagger from top to bottom)
+    lag = (card_idx - 2.5) * 0.025
+    w = up_down_wave(tau_base - lag)
 
-    # Shingle pitch (-9.5 deg around local X): bottom edge sits proudly over card above!
-    # Fan yaw (+theta * 0.90 around world Z): mirrors exact Noteform diagonal cascade curvature!
-    pitch = math.radians(-9.5)
-    yaw = theta * 0.90
-    roll = math.radians(-2.5)
+    # Normalized stack coordinate u_base from +2.5 (Top card) down to -2.5 (Bottom card)
+    u_base = 2.5 - float(card_idx)
+
+    # Unfolding spacing (0.80 compact Down -> 1.06 open Up) + vertical elevator glide (-0.52 -> +0.42)
+    spacing_y = 0.80 + 0.26 * w
+    y_glide = -0.52 + 0.94 * w
+
+    cy = u_base * spacing_y + y_glide
+
+    # Graceful subtle editorial C-curve spine along Y (zero circular spin)
+    norm_y = cy / 2.8
+    cx = 0.20 - 0.30 * (norm_y * norm_y) * 0.65 - 0.04 * norm_y
+
+    # Top-forward shingling (+5.2 deg pitch around X + rising Z step +0.055 per card)
+    cz = 0.14 + float(card_idx) * 0.055 + 0.012 * math.sin(2.0 * math.pi * tau_base - card_idx * 0.35)
+
+    # Crisp diagonal fan angles (+14.5 deg top down to -16.5 deg bottom) + gentle ±1.8 deg dynamic breath
+    base_yaw_deg = u_base * 6.2 - 1.0
+    breath_yaw_deg = 1.8 * (w - 0.5) * (1.0 if (card_idx % 2 == 0) else -0.6)
+    yaw = math.radians(base_yaw_deg + breath_yaw_deg)
+
+    pitch = math.radians(+5.2 + 0.8 * w)
+    roll = math.radians(-1.0 + 0.6 * w)
     return (cx, cy, cz), Euler((pitch, roll, yaw), 'YXZ')
 
 
@@ -264,9 +305,11 @@ def build_scene():
 
     for f in range(1, TOTAL_FRAMES + 1):
         phase = 2.0 * math.pi * ((f - 1) / float(TOTAL_FRAMES))
-        cam_x = -0.28 + 0.04 * math.sin(phase)
-        cam_loc = Vector((cam_x, -0.62 + 0.04 * math.cos(phase), 6.45))
-        tgt = Vector((cam_x, 0.00, 0.28))
+        # Locked studio camera height so user clearly sees the entire stack glide Up & Down!
+        cam_z = 7.12 - 0.06 * math.sin(phase)
+        cam_x = 0.02 + 0.015 * math.sin(phase)
+        cam_loc = Vector((cam_x, -0.22, cam_z))
+        tgt = Vector((cam_x, 0.04, 0.28))
         cam.location = cam_loc
         q = (tgt - cam_loc).to_track_quat('-Z', 'Y')
         cam.rotation_mode = 'XYZ'
@@ -294,7 +337,7 @@ def build_scene():
 def render_previews():
     scene = bpy.context.scene
     scene.render.image_settings.file_format = 'PNG'
-    for f in (1, 22):
+    for f in (1, 60, 120):
         scene.frame_set(f)
         out = os.path.join(PREV_DIR, f"prev_ad3_f{f:03d}.png")
         scene.render.filepath = out
