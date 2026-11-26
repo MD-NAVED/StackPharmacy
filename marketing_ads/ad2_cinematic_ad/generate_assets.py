@@ -11,7 +11,7 @@ TEX_DIR = os.path.join(BASE_DIR, "textures")
 os.makedirs(TEX_DIR, exist_ok=True)
 
 ROOT_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", ".."))
-ICON_PATH = os.path.join(ROOT_DIR, "client", "public", "icon-512.png")
+ICON_PATH = os.path.join(ROOT_DIR, "client", "public", "logo-mark.png")
 
 FONT_BOLD = r"C:\Windows\Fonts\segoeuib.ttf"
 FONT_REG = r"C:\Windows\Fonts\segoeui.ttf"

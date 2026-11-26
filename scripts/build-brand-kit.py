@@ -1,12 +1,13 @@
 """
 Builds the unified StackPharmacy Concept 3 (3D Glass Shield) Brand Kit,
-Web/PWA icons, Android native launcher & splash assets, GitHub README banner,
-and Desktop export folder from the approved Concept 3 master artwork.
+Web/PWA icons, transparent UI mark, Android native launcher & splash assets,
+GitHub README banner, and Desktop export folder from the approved Concept 3 artwork.
 
 Usage:
     python scripts/build-brand-kit.py [optional_path_to_master_image]
 """
 
+from collections import deque
 import glob
 import math
 import os
@@ -39,20 +40,118 @@ def load_font(path: str, size: int) -> ImageFont.FreeTypeFont:
     return ImageFont.load_default()
 
 
+def extract_concept3_transparent(master: Image.Image) -> Image.Image:
+    """Isolate the 3D glass plates + shield + cross cleanly with transparent background."""
+    im = master.convert("RGBA")
+    W, H = im.size
+    px = im.load()
+
+    def is_bg_pixel(r: int, g: int, b: int) -> bool:
+        # Dark emerald backdrop & soft cast shadow (near-zero Red channel)
+        if r <= 12 and g <= 68:
+            return True
+        if r <= 10 and g <= 115 and (g - b) >= 3:
+            return True
+        return False
+
+    visited = bytearray(W * H)
+    bg = bytearray(W * H)
+    q = deque()
+
+    for x in range(W):
+        for y in (0, H - 1):
+            idx = y * W + x
+            if not visited[idx]:
+                r, g, b, _ = px[x, y]
+                if is_bg_pixel(r, g, b):
+                    visited[idx] = 1
+                    bg[idx] = 1
+                    q.append((x, y))
+    for y in range(H):
+        for x in (0, W - 1):
+            idx = y * W + x
+            if not visited[idx]:
+                r, g, b, _ = px[x, y]
+                if is_bg_pixel(r, g, b):
+                    visited[idx] = 1
+                    bg[idx] = 1
+                    q.append((x, y))
+
+    while q:
+        cx, cy = q.popleft()
+        for nx, ny in ((cx - 1, cy), (cx + 1, cy), (cx, cy - 1), (cx, cy + 1)):
+            if 0 <= nx < W and 0 <= ny < H:
+                nidx = ny * W + nx
+                if not visited[nidx]:
+                    visited[nidx] = 1
+                    r, g, b, _ = px[nx, ny]
+                    if is_bg_pixel(r, g, b):
+                        bg[nidx] = 1
+                        q.append((nx, ny))
+
+    # Keep ONLY the largest connected foreground component (eliminates stray corner/edge noise)
+    fg_seen = bytearray(W * H)
+    best_comp = []
+    for y in range(H):
+        row = y * W
+        for x in range(W):
+            idx = row + x
+            if not bg[idx] and not fg_seen[idx]:
+                comp = []
+                cq = deque([(x, y)])
+                fg_seen[idx] = 1
+                while cq:
+                    px_x, px_y = cq.popleft()
+                    comp.append((px_x, px_y))
+                    for nx, ny in ((px_x - 1, px_y), (px_x + 1, px_y), (px_x, px_y - 1), (px_x, px_y + 1)):
+                        if 0 <= nx < W and 0 <= ny < H:
+                            nidx = ny * W + nx
+                            if not bg[nidx] and not fg_seen[nidx]:
+                                fg_seen[nidx] = 1
+                                cq.append((nx, ny))
+                if len(comp) > len(best_comp):
+                    best_comp = comp
+
+    mask = Image.new("L", (W, H), 0)
+    mpx = mask.load()
+    for x, y in best_comp:
+        mpx[x, y] = 255
+
+    # Clean 1px edge shave + smooth anti-aliased edge feather
+    mask = mask.filter(ImageFilter.MinFilter(3))
+    mask = mask.filter(ImageFilter.GaussianBlur(0.8))
+
+    out = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    out.paste(im, (0, 0), mask)
+
+    bbox = out.getbbox()
+    cropped = out.crop(bbox)
+    return cropped
+
+
+def pad_to_square(img: Image.Image, target_size: int, fill_ratio: float = 0.88) -> Image.Image:
+    """Center a transparent graphic cleanly inside a square RGBA canvas."""
+    cw, ch = img.size
+    max_dim = max(cw, ch)
+    scale = (target_size * fill_ratio) / max_dim
+    nw, nh = int(round(cw * scale)), int(round(ch * scale))
+    resized = img.resize((nw, nh), Image.LANCZOS)
+    canvas = Image.new("RGBA", (target_size, target_size), (0, 0, 0, 0))
+    canvas.paste(resized, ((target_size - nw) // 2, (target_size - nh) // 2), resized)
+    return canvas
+
+
 def crop_center_zoom(img: Image.Image, zoom: float = 1.0) -> Image.Image:
-    """Center-crop square image with zoom >= 1.0 and return copy."""
     w, h = img.size
     if zoom <= 1.0:
         return img.copy()
     side = min(w, h) / zoom
     x0 = (w - side) / 2.0
     y0 = (h - side) / 2.0
-    cropped = img.crop((x0, y0, x0 + side, y0 + side))
-    return cropped.resize((w, h), Image.LANCZOS)
+    return img.crop((x0, y0, x0 + side, y0 + side)).resize((w, h), Image.LANCZOS)
 
 
 def make_squircle_mask(size: int, radius_ratio: float = 0.22) -> Image.Image:
-    """High-res anti-aliased rounded-square mask via 4x supersampling."""
     ss = size * 4
     r = int(round(ss * radius_ratio))
     mask = Image.new("L", (ss, ss), 0)
@@ -62,7 +161,6 @@ def make_squircle_mask(size: int, radius_ratio: float = 0.22) -> Image.Image:
 
 
 def make_circle_mask(size: int) -> Image.Image:
-    """High-res anti-aliased circle mask via 4x supersampling."""
     ss = size * 4
     mask = Image.new("L", (ss, ss), 0)
     d = ImageDraw.Draw(mask)
@@ -71,7 +169,6 @@ def make_circle_mask(size: int) -> Image.Image:
 
 
 def make_radial_fade_mask(size: int, inner: float = 0.62, outer: float = 0.96) -> Image.Image:
-    """Soft radial edge fade so adaptive foreground blends seamlessly on #004D40."""
     mask = Image.new("L", (size, size), 255)
     px = mask.load()
     c = (size - 1) / 2.0
@@ -81,15 +178,13 @@ def make_radial_fade_mask(size: int, inner: float = 0.62, outer: float = 0.96) -
     for y in range(size):
         dy = y - c
         for x in range(size):
-            dx = x - c
-            dist = math.hypot(dx, dy)
+            dist = math.hypot(x - c, dy)
             if dist <= r_in:
                 a = 255
             elif dist >= r_out:
                 a = 0
             else:
                 t = (dist - r_in) / span
-                # smoothstep falloff
                 s = t * t * (3.0 - 2.0 * t)
                 a = int(round(255 * (1.0 - s)))
             px[x, y] = a
@@ -103,25 +198,19 @@ def apply_mask(img: Image.Image, size: int, mask: Image.Image, zoom: float = 1.0
     return out
 
 
-def draw_wordmark_lockup(tile_img: Image.Image, dark_text: bool = True) -> Image.Image:
-    """Create crisp transparent horizontal lockup: Concept 3 tile + StackPharmacy + tagline."""
+def draw_wordmark_lockup(mark_transparent: Image.Image, dark_text: bool = True) -> Image.Image:
+    """Horizontal lockup with transparent floating 3D Glass Shield mark + StackPharmacy."""
     W, H = 2048, 560
     canvas = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(canvas)
 
-    tile_size = 380
-    tx, ty = 72, (H - tile_size) // 2
+    mark_h = 430
+    mw, mh = mark_transparent.size
+    mark_w = int(round(mw * mark_h / mh))
+    tx, ty = 74, (H - mark_h) // 2
 
-    # Soft drop shadow under tile
-    shadow = Image.new("RGBA", (tile_size + 40, tile_size + 40), (0, 0, 0, 0))
-    sm = make_squircle_mask(tile_size, 0.22)
-    s_fill = Image.new("RGBA", (tile_size, tile_size), (0, 38, 31, 95))
-    shadow.paste(s_fill, (20, 24), sm)
-    shadow = shadow.filter(ImageFilter.GaussianBlur(14))
-    canvas.alpha_composite(shadow, (tx - 20, ty - 14))
-
-    tile_resized = tile_img.resize((tile_size, tile_size), Image.LANCZOS)
-    canvas.alpha_composite(tile_resized, (tx, ty))
+    mark_resized = mark_transparent.resize((mark_w, mark_h), Image.LANCZOS)
+    canvas.alpha_composite(mark_resized, (tx, ty))
 
     f_word = load_font(FONT_BOLD, 178)
     f_tag = load_font(FONT_SEMI, 42)
@@ -130,7 +219,7 @@ def draw_wordmark_lockup(tile_img: Image.Image, dark_text: bool = True) -> Image
     c_pharma = (0, 105, 92, 255) if dark_text else (128, 203, 196, 255)
     c_tag = (55, 92, 86, 235) if dark_text else (204, 242, 236, 235)
 
-    text_x = tx + tile_size + 68
+    text_x = tx + mark_w + 58
     word_y = 148
     w_stack = d.textlength("Stack", font=f_word)
     d.text((text_x, word_y), "Stack", font=f_word, fill=c_stack)
@@ -140,23 +229,18 @@ def draw_wordmark_lockup(tile_img: Image.Image, dark_text: bool = True) -> Image
     return canvas
 
 
-def draw_vertical_lockup(tile_img: Image.Image, dark_text: bool = True) -> Image.Image:
-    """Create crisp transparent stacked vertical lockup for mobile/presentations."""
+def draw_vertical_lockup(mark_transparent: Image.Image, dark_text: bool = True) -> Image.Image:
+    """Stacked vertical lockup with transparent floating 3D Glass Shield mark."""
     W, H = 1400, 1120
     canvas = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(canvas)
 
-    tile_size = 440
-    tx, ty = (W - tile_size) // 2, 110
+    mark_h = 480
+    mw, mh = mark_transparent.size
+    mark_w = int(round(mw * mark_h / mh))
+    tx, ty = (W - mark_w) // 2, 95
 
-    shadow = Image.new("RGBA", (tile_size + 48, tile_size + 48), (0, 0, 0, 0))
-    sm = make_squircle_mask(tile_size, 0.22)
-    s_fill = Image.new("RGBA", (tile_size, tile_size), (0, 38, 31, 90))
-    shadow.paste(s_fill, (24, 28), sm)
-    shadow = shadow.filter(ImageFilter.GaussianBlur(16))
-    canvas.alpha_composite(shadow, (tx - 24, ty - 14))
-
-    canvas.alpha_composite(tile_img.resize((tile_size, tile_size), Image.LANCZOS), (tx, ty))
+    canvas.alpha_composite(mark_transparent.resize((mark_w, mark_h), Image.LANCZOS), (tx, ty))
 
     f_word = load_font(FONT_BOLD, 148)
     f_tag = load_font(FONT_SEMI, 40)
@@ -168,19 +252,19 @@ def draw_vertical_lockup(tile_img: Image.Image, dark_text: bool = True) -> Image
     ws = d.textlength("Stack", font=f_word)
     wp = d.textlength("Pharmacy", font=f_word)
     wx = (W - (ws + wp)) / 2.0
-    wy = 620
+    wy = 626
     d.text((wx, wy), "Stack", font=f_word, fill=c_stack)
     d.text((wx + ws, wy), "Pharmacy", font=f_word, fill=c_pharma)
 
     tag = "SMART STOCK & EXPIRY GUARD"
     wt = d.textlength(tag, font=f_tag)
-    d.text(((W - wt) / 2.0, 816), tag, font=f_tag, fill=c_tag)
+    d.text(((W - wt) / 2.0, 822), tag, font=f_tag, fill=c_tag)
 
     return canvas
 
 
-def draw_readme_banner(tile_img: Image.Image) -> Image.Image:
-    """Create sleek 1280x360 hero banner for GitHub README.md."""
+def draw_readme_banner(mark_transparent: Image.Image) -> Image.Image:
+    """Sleek 1280x360 hero banner with floating 3D Glass Shield (NO outer box)."""
     W, H = 1280, 360
     bg = Image.new("RGBA", (W, H), (0, 56, 46, 255))
     px = bg.load()
@@ -188,34 +272,34 @@ def draw_readme_banner(tile_img: Image.Image) -> Image.Image:
         for x in range(W):
             u = x / W
             v = y / H
-            # Diagonal emerald-to-dark-teal studio gradient + subtle mint top-left glow
-            glow = max(0.0, 1.0 - math.hypot((x - 210) / 360.0, (y - 180) / 240.0))
-            r = int(min(255, 0 + 18 * u + 22 * (glow ** 1.7)))
-            g = int(min(255, 62 + 32 * (1 - u * 0.5) - 14 * v + 68 * (glow ** 1.7)))
-            b = int(min(255, 53 + 26 * (1 - u * 0.5) - 10 * v + 56 * (glow ** 1.7)))
+            glow = max(0.0, 1.0 - math.hypot((x - 195) / 340.0, (y - 180) / 220.0))
+            r = int(min(255, 0 + 18 * u + 26 * (glow ** 1.65)))
+            g = int(min(255, 62 + 30 * (1 - u * 0.5) - 14 * v + 78 * (glow ** 1.65)))
+            b = int(min(255, 53 + 24 * (1 - u * 0.5) - 10 * v + 64 * (glow ** 1.65)))
             px[x, y] = (r, g, b, 255)
 
     d = ImageDraw.Draw(bg)
-    # Subtle glass accent border inside canvas
-    d.rounded_rectangle([14, 14, W - 15, H - 15], radius=24, outline=(77, 182, 172, 70), width=2)
+    d.rounded_rectangle([14, 14, W - 15, H - 15], radius=24, outline=(77, 182, 172, 75), width=2)
 
-    # Hero icon tile on left
-    tile_size = 228
-    tx, ty = 74, (H - tile_size) // 2
+    # Floating isolated 3D Glass Shield mark directly over subtle mint studio halo
+    mark_h = 252
+    mw, mh = mark_transparent.size
+    mark_w = int(round(mw * mark_h / mh))
+    tx, ty = 78, (H - mark_h) // 2
 
-    halo = Image.new("RGBA", (tile_size + 80, tile_size + 80), (0, 0, 0, 0))
+    halo = Image.new("RGBA", (mark_w + 120, mark_h + 120), (0, 0, 0, 0))
     hd = ImageDraw.Draw(halo)
-    hd.ellipse([20, 20, tile_size + 60, tile_size + 60], fill=(77, 182, 172, 60))
-    halo = halo.filter(ImageFilter.GaussianBlur(24))
-    bg.alpha_composite(halo, (tx - 40, ty - 40))
+    hd.ellipse([24, 24, mark_w + 96, mark_h + 96], fill=(77, 182, 172, 72))
+    halo = halo.filter(ImageFilter.GaussianBlur(28))
+    bg.alpha_composite(halo, (tx - 60, ty - 60))
 
-    bg.alpha_composite(tile_img.resize((tile_size, tile_size), Image.LANCZOS), (tx, ty))
+    bg.alpha_composite(mark_transparent.resize((mark_w, mark_h), Image.LANCZOS), (tx, ty))
 
     f_title = load_font(FONT_BOLD, 88)
     f_sub = load_font(FONT_REG, 28)
     f_pill = load_font(FONT_SEMI, 20)
 
-    text_x = tx + tile_size + 52
+    text_x = tx + mark_w + 54
     ws = d.textlength("Stack", font=f_title)
     d.text((text_x, 66), "Stack", font=f_title, fill=(255, 255, 255, 255))
     d.text((text_x + ws, 66), "Pharmacy", font=f_title, fill=(128, 203, 196, 255))
@@ -227,7 +311,6 @@ def draw_readme_banner(tile_img: Image.Image) -> Image.Image:
         fill=(224, 242, 241, 235),
     )
 
-    # Feature chips row
     pills = [
         ("AI Bill Scanner", (0, 121, 107, 230), (255, 255, 255, 255)),
         ("FEFO Expiry Guard", (0, 121, 107, 230), (255, 255, 255, 255)),
@@ -246,13 +329,15 @@ def draw_readme_banner(tile_img: Image.Image) -> Image.Image:
     return bg
 
 
-def draw_android_splash(tile_img: Image.Image, w: int, h: int) -> Image.Image:
-    """Create crisp RGB splash screen matching #004D40 background."""
+def draw_android_splash(mark_transparent: Image.Image, w: int, h: int) -> Image.Image:
+    """Create crisp RGB splash screen with floating 3D Glass Shield on #004D40."""
     canvas = Image.new("RGB", (w, h), (0, 77, 64))
-    icon_sz = int(round(min(w, h) * 0.34))
-    icon = tile_img.resize((icon_sz, icon_sz), Image.LANCZOS)
-    x = (w - icon_sz) // 2
-    y = (h - icon_sz) // 2
+    mark_h = int(round(min(w, h) * 0.36))
+    mw, mh = mark_transparent.size
+    mark_w = int(round(mw * mark_h / mh))
+    icon = mark_transparent.resize((mark_w, mark_h), Image.LANCZOS)
+    x = (w - mark_w) // 2
+    y = (h - mark_h) // 2
     canvas.paste(icon, (x, y), icon)
     return canvas
 
@@ -267,38 +352,42 @@ def main():
     os.makedirs(DESKTOP_KIT, exist_ok=True)
 
     master = Image.open(src_path).convert("RGBA")
+    mark_cropped = extract_concept3_transparent(master)
+    mark_square_1024 = pad_to_square(mark_cropped, 1024, fill_ratio=0.90)
 
-    # 1. Core 1024 master assets (with crisp 1.15x center framing for UI/tile punchiness)
+    # 1. Core 1024 brand assets
     full_1024 = crop_center_zoom(master, zoom=1.12).resize((1024, 1024), Image.LANCZOS)
     tile_1024 = apply_mask(master, 1024, make_squircle_mask(1024, 0.22), zoom=1.15)
     social_1080 = crop_center_zoom(master, zoom=1.08).resize((1080, 1080), Image.LANCZOS).convert("RGB")
 
     full_1024.save(os.path.join(BRAND_DIR, "stackpharmacy-icon-1024.png"))
     tile_1024.save(os.path.join(BRAND_DIR, "stackpharmacy-icon-tile-1024.png"))
+    mark_square_1024.save(os.path.join(BRAND_DIR, "stackpharmacy-icon-transparent-1024.png"))
     social_1080.save(os.path.join(BRAND_DIR, "stackpharmacy-social-dp.png"), quality=96)
 
-    # 2. Wordmark lockups + README hero banner
-    lockup_light = draw_wordmark_lockup(tile_1024, dark_text=True)
-    lockup_dark = draw_wordmark_lockup(tile_1024, dark_text=False)
-    lockup_vertical = draw_vertical_lockup(tile_1024, dark_text=True)
-    readme_banner = draw_readme_banner(tile_1024)
+    # 2. Floating-mark Wordmark lockups + README hero banner (zero dark squircle box!)
+    lockup_light = draw_wordmark_lockup(mark_cropped, dark_text=True)
+    lockup_dark = draw_wordmark_lockup(mark_cropped, dark_text=False)
+    lockup_vertical = draw_vertical_lockup(mark_cropped, dark_text=True)
+    readme_banner = draw_readme_banner(mark_cropped)
 
     lockup_light.save(os.path.join(BRAND_DIR, "stackpharmacy-logo-horizontal-light.png"))
     lockup_dark.save(os.path.join(BRAND_DIR, "stackpharmacy-logo-horizontal-dark.png"))
     lockup_vertical.save(os.path.join(BRAND_DIR, "stackpharmacy-logo-vertical.png"))
     readme_banner.save(os.path.join(BRAND_DIR, "stackpharmacy-readme-banner.png"))
 
-    # 3. Web & PWA Icons in client/public/
+    # 3. Web & PWA Icons + transparent UI mark in client/public/
     icon_192 = apply_mask(master, 192, make_squircle_mask(192, 0.22), zoom=1.15)
     icon_512 = apply_mask(master, 512, make_squircle_mask(512, 0.22), zoom=1.15)
-    # Maskable stays safely inside Android's 80% inner circle
     icon_maskable = crop_center_zoom(master, zoom=1.0).resize((512, 512), Image.LANCZOS).convert("RGBA")
+    ui_mark_256 = pad_to_square(mark_cropped, 256, fill_ratio=0.92)
 
     icon_192.save(os.path.join(PUBLIC_DIR, "icon-192.png"))
     icon_512.save(os.path.join(PUBLIC_DIR, "icon-512.png"))
     icon_maskable.save(os.path.join(PUBLIC_DIR, "icon-maskable-512.png"))
+    ui_mark_256.save(os.path.join(PUBLIC_DIR, "logo-mark.png"))
 
-    # 4. Android native mipmaps & splash screens
+    # 4. Android native mipmaps & floating splash screens
     mipmap_specs = {
         "mipmap-mdpi": (48, 108),
         "mipmap-hdpi": (72, 162),
@@ -311,7 +400,6 @@ def main():
         os.makedirs(mdir, exist_ok=True)
         sq = apply_mask(master, ic_sz, make_squircle_mask(ic_sz, 0.20), zoom=1.15)
         rd = apply_mask(master, ic_sz, make_circle_mask(ic_sz), zoom=1.08)
-        # Adaptive foreground: zoom slightly out (0.94x via padding) and fade edges smoothly onto #004D40
         fg_base = Image.new("RGBA", (fg_sz, fg_sz), (0, 77, 64, 0))
         inner_sz = int(round(fg_sz * 0.72))
         inner_img = apply_mask(master, inner_sz, make_radial_fade_mask(inner_sz, 0.56, 0.96), zoom=1.12)
@@ -325,17 +413,17 @@ def main():
     for sp_path in glob.glob(os.path.join(RES_DIR, "drawable*", "splash.png")):
         with Image.open(sp_path) as existing:
             sw, sh = existing.size
-        splash = draw_android_splash(tile_1024, sw, sh)
+        splash = draw_android_splash(mark_cropped, sw, sh)
         splash.save(sp_path)
 
     # 5. Copy full brand kit to Desktop for immediate social/PR use
     for fname in os.listdir(BRAND_DIR):
         shutil.copy2(os.path.join(BRAND_DIR, fname), os.path.join(DESKTOP_KIT, fname))
 
-    print("Brand kit generated successfully:")
+    print("Transparent Brand kit generated successfully:")
     print(f"  Repo brand/:    {BRAND_DIR} ({len(os.listdir(BRAND_DIR))} files)")
-    print(f"  PWA public/:    {PUBLIC_DIR} (icon-192.png, icon-512.png, icon-maskable-512.png)")
-    print(f"  Android res/:   {RES_DIR} (5 mipmap densities + splash screens)")
+    print(f"  PWA public/:    {PUBLIC_DIR} (icon-192, icon-512, icon-maskable-512, logo-mark)")
+    print(f"  Android res/:   {RES_DIR} (5 mipmap densities + floating splash screens)")
     print(f"  Desktop export: {DESKTOP_KIT}")
 
 

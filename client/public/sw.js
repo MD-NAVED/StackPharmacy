@@ -1,7 +1,7 @@
 // Minimal service worker for StackPharmacy PWA installability + offline shell.
 // API calls and index.html always go to the network; only static assets are cached.
-const CACHE = 'stackpharmacy-shell-v5';
-const SHELL = ['/manifest.webmanifest', '/icon-192.png', '/icon-512.png'];
+const CACHE = 'stackpharmacy-shell-v6';
+const SHELL = ['/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/logo-mark.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

@@ -66,7 +66,7 @@ export default function SignUp() {
       <Card sx={{ width: 440, maxWidth: '100%', p: 1, borderRadius: 3 }}>
         <CardContent sx={{ p: 3 }}>
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 2.5 }}>
-            <BrandMark size={68} radius="24%" sx={{ mb: 1.5, boxShadow: '0 6px 18px rgba(0, 77, 64, 0.28)' }} />
+            <BrandMark size={72} sx={{ mb: 1.5, filter: 'drop-shadow(0 8px 18px rgba(0, 77, 64, 0.28))' }} />
             <Typography variant="h5" sx={{ fontWeight: 800 }}>{BRAND_NAME}</Typography>
             <Typography variant="body2" color="text.secondary">
               Register your store — First Month Free (30-Day Trial)
