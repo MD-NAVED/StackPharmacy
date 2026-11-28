@@ -77,7 +77,7 @@ export default function Privacy() {
             <Box>
               <Typography
                 variant="h6"
-                sx={{ fontWeight: 800, color: '#0F766E', lineHeight: 1.1, fontSize: '1.15rem' }}
+                sx={{ fontWeight: 800, color: '#212121', lineHeight: 1.1, fontSize: '1.15rem' }}
               >
                 {BRAND_NAME}
               </Typography>

@@ -97,20 +97,16 @@ def draw_vertical_lockup(mark_light: Image.Image, dark_text: bool = True) -> Ima
 
     canvas.alpha_composite(mark_light.resize((mark_w, mark_h), Image.LANCZOS), (tx, ty))
 
-    f_stack = load_font(FONT_BOLD, 148)
-    f_pharma = load_font(FONT_SEMI, 148)
+    f_word = load_font(FONT_BOLD, 148)
     f_tag = load_font(FONT_SEMI, 38)
 
-    c_stack = (5, 59, 54, 255) if dark_text else (255, 255, 255, 255)
-    c_pharma = (14, 131, 120, 255) if dark_text else (128, 203, 196, 255)
-    c_tag = (71, 85, 105, 235) if dark_text else (204, 242, 236, 235)
+    c_word = (33, 33, 33, 255) if dark_text else (255, 255, 255, 255)
+    c_tag = (100, 116, 139, 240) if dark_text else (203, 213, 225, 240)
 
-    ws = d.textlength("Stack", font=f_stack)
-    wp = d.textlength("Pharmacy", font=f_pharma)
-    wx = (W - (ws + wp)) / 2.0
+    w_word = d.textlength("StackPharmacy", font=f_word)
+    wx = (W - w_word) / 2.0
     wy = 626
-    d.text((wx, wy), "Stack", font=f_stack, fill=c_stack)
-    d.text((wx + ws, wy), "Pharmacy", font=f_pharma, fill=c_pharma)
+    d.text((wx, wy), "StackPharmacy", font=f_word, fill=c_word)
 
     tag = "SMART STOCK & EXPIRY GUARD"
     wt = d.textlength(tag, font=f_tag)
@@ -150,14 +146,11 @@ def draw_readme_banner(mark_dark: Image.Image) -> Image.Image:
     bg.alpha_composite(mark_dark.resize((mark_w, mark_h), Image.LANCZOS), (tx, ty))
 
     f_stack = load_font(FONT_BOLD, 88)
-    f_pharma = load_font(FONT_SEMI, 88)
     f_sub = load_font(FONT_REG, 27)
     f_pill = load_font(FONT_SEMI, 20)
 
     text_x = tx + mark_w + 54
-    ws = d.textlength("Stack", font=f_stack)
-    d.text((text_x, 66), "Stack", font=f_stack, fill=(255, 255, 255, 255))
-    d.text((text_x + ws, 66), "Pharmacy", font=f_pharma, fill=(110, 231, 183, 255))
+    d.text((text_x, 66), "StackPharmacy", font=f_stack, fill=(255, 255, 255, 255))
 
     d.text(
         (text_x + 2, 186),

@@ -76,7 +76,7 @@ export default function Onboarding() {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <BrandMark size={36} />
             <Box>
-              <Typography variant="h6" sx={{ fontWeight: 800, color: '#0F766E', lineHeight: 1.1, fontSize: '1.15rem' }}>
+              <Typography variant="h6" sx={{ fontWeight: 800, color: '#212121', lineHeight: 1.1, fontSize: '1.15rem' }}>
                 {BRAND_NAME}
               </Typography>
               <Typography variant="caption" sx={{ color: '#64748B', display: 'block', fontSize: '0.72rem', fontWeight: 500 }}>

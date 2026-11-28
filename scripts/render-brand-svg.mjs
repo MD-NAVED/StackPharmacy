@@ -121,21 +121,20 @@ function buildOptionDSvg({
 
 function buildHorizontalSvg({ darkBg = false } = {}) {
   const palette = darkBg
-    ? { backColor: '#117065', midColor: '#14B8A6', frontColor: '#34D399', stackText: '#FFFFFF', pharmaText: '#5EEAD4', tagText: '#A7F3D0', idPrefix: 'sp-hd' }
-    : { backColor: '#053B36', midColor: '#0E8378', frontColor: '#0BB87A', stackText: '#053B36', pharmaText: '#0E8378', tagText: '#475569', idPrefix: 'sp-hl' };
+    ? { backColor: '#117065', midColor: '#14B8A6', frontColor: '#34D399', wordText: '#FFFFFF', tagText: '#CBD5E1', idPrefix: 'sp-hd' }
+    : { backColor: '#053B36', midColor: '#0E8378', frontColor: '#0BB87A', wordText: '#212121', tagText: '#64748B', idPrefix: 'sp-hl' };
 
   const innerMark = buildOptionDSvg({
     ...palette,
-    widthAttr: '420',
-    heightAttr: '420',
-  }).replace('<svg ', '<svg x="48" y="68" ');
+    widthAttr: '360',
+    heightAttr: '360',
+  }).replace('<svg ', '<svg x="54" y="60" ');
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1320 560" width="1320" height="560" fill="none">
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1620 480" width="1620" height="480" fill="none">
   ${innerMark}
   <g font-family="Segoe UI, Inter, Arial, sans-serif">
-    <text x="506" y="238" font-size="162" font-weight="800" letter-spacing="-4" fill="${palette.stackText}">Stack</text>
-    <text x="508" y="384" font-size="136" font-weight="600" letter-spacing="-2" fill="${palette.pharmaText}">Pharmacy</text>
-    <text x="514" y="472" font-size="25" font-weight="600" letter-spacing="4" fill="${palette.tagText}">SMART STOCK &amp; EXPIRY GUARD</text>
+    <text x="454" y="264" font-size="148" font-weight="800" letter-spacing="-3" fill="${palette.wordText}">StackPharmacy</text>
+    <text x="460" y="346" font-size="28" font-weight="600" letter-spacing="4" fill="${palette.tagText}">SMART STOCK &amp; EXPIRY GUARD</text>
   </g>
 </svg>`;
 }
@@ -203,8 +202,8 @@ async function main() {
   try {
     await rasterizeSvg(browser, markLightSvg, 1024, 1024, path.join(TMP_DIR, 'mark_light_1024.png'));
     await rasterizeSvg(browser, markDarkSvg, 1024, 1024, path.join(TMP_DIR, 'mark_dark_1024.png'));
-    await rasterizeSvg(browser, horizLightSvg, 1320, 560, path.join(TMP_DIR, 'horiz_light.png'));
-    await rasterizeSvg(browser, horizDarkSvg, 1320, 560, path.join(TMP_DIR, 'horiz_dark.png'));
+    await rasterizeSvg(browser, horizLightSvg, 1620, 480, path.join(TMP_DIR, 'horiz_light.png'));
+    await rasterizeSvg(browser, horizDarkSvg, 1620, 480, path.join(TMP_DIR, 'horiz_dark.png'));
   } finally {
     await browser.close();
   }
