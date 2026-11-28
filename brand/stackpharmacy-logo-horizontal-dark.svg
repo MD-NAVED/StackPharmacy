@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1320 560" width="1320" height="560" fill="none">
+  <svg x="48" y="68" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="420" height="420" fill="none" role="img" aria-label="StackPharmacy Logo">
+  <defs>
+    <mask id="sp-hd-cut-mid" maskUnits="userSpaceOnUse">
+      <rect x="0" y="0" width="512" height="512" fill="#FFFFFF" />
+      <rect x="246" y="114" width="186" height="308" rx="28" ry="28" fill="#000000" stroke="#000000" stroke-width="18" />
+    </mask>
+    <mask id="sp-hd-cut-back" maskUnits="userSpaceOnUse">
+      <rect x="0" y="0" width="512" height="512" fill="#FFFFFF" />
+      <g transform="rotate(-22 252 402)">
+        <rect x="246" y="114" width="186" height="308" rx="28" ry="28" fill="#000000" stroke="#000000" stroke-width="18" />
+      </g>
+      <rect x="246" y="114" width="186" height="308" rx="28" ry="28" fill="#000000" stroke="#000000" stroke-width="18" />
+    </mask>
+    
+  </defs>
+
+  <!-- Back slab (-44 deg) -->
+  <g transform="translate(22 10)">
+    <g mask="url(#sp-hd-cut-back)">
+      <g transform="rotate(-44 252 402)">
+        <rect x="246" y="114" width="186" height="308" rx="28" ry="28" fill="#117065" />
+      </g>
+    </g>
+
+    <!-- Middle slab (-22 deg) -->
+    <g mask="url(#sp-hd-cut-mid)">
+      <g transform="rotate(-22 252 402)">
+        <rect x="246" y="114" width="186" height="308" rx="28" ry="28" fill="#14B8A6" />
+      </g>
+    </g>
+
+    <!-- Front emerald slab + medical cross -->
+    <g>
+      <rect x="246" y="114" width="186" height="308" rx="28" ry="28" fill="#34D399" />
+    </g>
+    <g fill="#FFFFFF">
+      <rect x="287" y="251" width="104" height="34" rx="4" />
+      <rect x="322" y="216" width="34" height="104" rx="4" />
+    </g>
+  </g>
+</svg>
+  <g font-family="Segoe UI, Inter, Arial, sans-serif">
+    <text x="506" y="238" font-size="162" font-weight="800" letter-spacing="-4" fill="#FFFFFF">Stack</text>
+    <text x="508" y="384" font-size="136" font-weight="600" letter-spacing="-2" fill="#5EEAD4">Pharmacy</text>
+    <text x="514" y="472" font-size="25" font-weight="600" letter-spacing="4" fill="#A7F3D0">SMART STOCK &amp; EXPIRY GUARD</text>
+  </g>
+</svg>

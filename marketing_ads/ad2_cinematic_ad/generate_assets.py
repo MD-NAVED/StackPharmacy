@@ -12,6 +12,7 @@ os.makedirs(TEX_DIR, exist_ok=True)
 
 ROOT_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", ".."))
 ICON_PATH = os.path.join(ROOT_DIR, "client", "public", "logo-mark.png")
+ICON_LIGHT_PATH = os.path.join(ROOT_DIR, "brand", "stackpharmacy-icon-transparent-1024.png")
 
 FONT_BOLD = r"C:\Windows\Fonts\segoeuib.ttf"
 FONT_REG = r"C:\Windows\Fonts\segoeui.ttf"
@@ -158,8 +159,9 @@ def build_logo_pngs() -> tuple[str, str]:
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
 
-    if os.path.exists(ICON_PATH):
-        icon = Image.open(ICON_PATH).convert("RGBA").resize((320, 320), Image.LANCZOS)
+    sting_icon_path = ICON_LIGHT_PATH if os.path.exists(ICON_LIGHT_PATH) else ICON_PATH
+    if os.path.exists(sting_icon_path):
+        icon = Image.open(sting_icon_path).convert("RGBA").resize((320, 320), Image.LANCZOS)
         img.paste(icon, (130, 210), icon)
 
     # Rich dark emerald-slate wordmark reads crisply on white-to-teal background
@@ -181,8 +183,8 @@ def build_logo_pngs() -> tuple[str, str]:
     VW, VH = 1400, 1200
     vimg = Image.new("RGBA", (VW, VH), (0, 0, 0, 0))
     vd = ImageDraw.Draw(vimg)
-    if os.path.exists(ICON_PATH):
-        vicon = Image.open(ICON_PATH).convert("RGBA").resize((360, 360), Image.LANCZOS)
+    if os.path.exists(sting_icon_path):
+        vicon = Image.open(sting_icon_path).convert("RGBA").resize((360, 360), Image.LANCZOS)
         vimg.paste(vicon, ((VW - 360) // 2, 120), vicon)
 
     fv = font(FONT_BOLD, 134)
