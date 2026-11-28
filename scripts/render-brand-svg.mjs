@@ -121,8 +121,8 @@ function buildOptionDSvg({
 
 function buildHorizontalSvg({ darkBg = false } = {}) {
   const palette = darkBg
-    ? { backColor: '#117065', midColor: '#14B8A6', frontColor: '#34D399', wordText: '#FFFFFF', tagText: '#CBD5E1', idPrefix: 'sp-hd' }
-    : { backColor: '#053B36', midColor: '#0E8378', frontColor: '#0BB87A', wordText: '#212121', tagText: '#64748B', idPrefix: 'sp-hl' };
+    ? { backColor: '#117065', midColor: '#14B8A6', frontColor: '#34D399', stackText: '#FFFFFF', pharmaText: '#5EEAD4', tagText: '#CBD5E1', idPrefix: 'sp-hd' }
+    : { backColor: '#053B36', midColor: '#0E8378', frontColor: '#0BB87A', stackText: '#053B36', pharmaText: '#0E8378', tagText: '#64748B', idPrefix: 'sp-hl' };
 
   const innerMark = buildOptionDSvg({
     ...palette,
@@ -133,7 +133,7 @@ function buildHorizontalSvg({ darkBg = false } = {}) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1620 480" width="1620" height="480" fill="none">
   ${innerMark}
   <g font-family="Segoe UI, Inter, Arial, sans-serif">
-    <text x="454" y="264" font-size="148" font-weight="800" letter-spacing="-3" fill="${palette.wordText}">StackPharmacy</text>
+    <text x="454" y="264" font-size="148" font-weight="800" letter-spacing="-3"><tspan fill="${palette.stackText}">Stack</tspan><tspan fill="${palette.pharmaText}">Pharmacy</tspan></text>
     <text x="460" y="346" font-size="28" font-weight="600" letter-spacing="4" fill="${palette.tagText}">SMART STOCK &amp; EXPIRY GUARD</text>
   </g>
 </svg>`;

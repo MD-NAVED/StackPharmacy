@@ -41,7 +41,7 @@
   </g>
 </svg>
   <g font-family="Segoe UI, Inter, Arial, sans-serif">
-    <text x="454" y="264" font-size="148" font-weight="800" letter-spacing="-3" fill="#212121">StackPharmacy</text>
+    <text x="454" y="264" font-size="148" font-weight="800" letter-spacing="-3"><tspan fill="#053B36">Stack</tspan><tspan fill="#0E8378">Pharmacy</tspan></text>
     <text x="460" y="346" font-size="28" font-weight="600" letter-spacing="4" fill="#64748B">SMART STOCK &amp; EXPIRY GUARD</text>
   </g>
 </svg>

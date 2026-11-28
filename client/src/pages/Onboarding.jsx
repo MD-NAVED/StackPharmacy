@@ -24,7 +24,7 @@ import SignalCellularAltIcon from '@mui/icons-material/SignalCellularAlt';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import WhatsAppIcon from '@mui/icons-material/WhatsApp';
-import BrandMark from '../components/BrandMark';
+import BrandMark, { BrandWordmark } from '../components/BrandMark';
 
 import {
   BRAND_NAME,
@@ -76,9 +76,11 @@ export default function Onboarding() {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <BrandMark size={36} />
             <Box>
-              <Typography variant="h6" sx={{ fontWeight: 800, color: '#212121', lineHeight: 1.1, fontSize: '1.15rem' }}>
-                {BRAND_NAME}
-              </Typography>
+              <BrandWordmark
+                variant="light"
+                typographyProps={{ variant: 'h6' }}
+                sx={{ lineHeight: 1.1, fontSize: '1.15rem' }}
+              />
               <Typography variant="caption" sx={{ color: '#64748B', display: 'block', fontSize: '0.72rem', fontWeight: 500 }}>
                 Chemist App
               </Typography>

@@ -1,5 +1,5 @@
 import React, { useId } from 'react';
-import { Box } from '@mui/material';
+import { Box, Typography } from '@mui/material';
 
 /**
  * Reusable StackPharmacy Option D (Minimal Flat Card Stack + Medical Cross) brand mark.
@@ -106,5 +106,24 @@ export default function BrandMark({ size = 36, variant = 'light', shadow = true,
         </g>
       </g>
     </Box>
+  );
+}
+
+/**
+ * Two-tone StackPharmacy wordmark synced cleanly with Option D icon palette:
+ * Light background -> "Stack" (#053B36) + "Pharmacy" (#0E8378)
+ * Dark background  -> "Stack" (#FFFFFF) + "Pharmacy" (#5EEAD4)
+ */
+export function BrandWordmark({ variant = 'light', typographyProps = {}, sx = {} }) {
+  const stackColor = variant === 'dark' ? '#FFFFFF' : '#053B36';
+  const pharmaColor = variant === 'dark' ? '#5EEAD4' : '#0E8378';
+  return (
+    <Typography
+      {...typographyProps}
+      sx={{ fontWeight: 800, display: 'inline-block', lineHeight: 1.15, ...sx }}
+    >
+      <Box component="span" sx={{ color: stackColor }}>Stack</Box>
+      <Box component="span" sx={{ color: pharmaColor }}>Pharmacy</Box>
+    </Typography>
   );
 }

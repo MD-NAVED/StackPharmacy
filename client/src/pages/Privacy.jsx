@@ -13,7 +13,7 @@ import {
   Divider
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import BrandMark from '../components/BrandMark';
+import BrandMark, { BrandWordmark } from '../components/BrandMark';
 import WhatsAppIcon from '@mui/icons-material/WhatsApp';
 import EmailIcon from '@mui/icons-material/Email';
 import ShieldIcon from '@mui/icons-material/Shield';
@@ -75,12 +75,11 @@ export default function Privacy() {
           >
             <BrandMark size={36} />
             <Box>
-              <Typography
-                variant="h6"
-                sx={{ fontWeight: 800, color: '#212121', lineHeight: 1.1, fontSize: '1.15rem' }}
-              >
-                {BRAND_NAME}
-              </Typography>
+              <BrandWordmark
+                variant="light"
+                typographyProps={{ variant: 'h6' }}
+                sx={{ lineHeight: 1.1, fontSize: '1.15rem' }}
+              />
               <Typography
                 variant="caption"
                 sx={{ color: '#64748B', display: 'block', fontSize: '0.72rem', fontWeight: 500 }}
@@ -342,9 +341,11 @@ export default function Privacy() {
         <Container maxWidth="md" disableGutters sx={{ textAlign: 'center' }}>
           <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1, mb: 1 }}>
             <BrandMark size={30} variant="dark" />
-            <Typography variant="h6" sx={{ fontWeight: 800, color: '#FFFFFF', fontSize: '1.1rem' }}>
-              {BRAND_NAME}
-            </Typography>
+            <BrandWordmark
+              variant="dark"
+              typographyProps={{ variant: 'h6' }}
+              sx={{ fontSize: '1.1rem' }}
+            />
           </Box>
           <Typography
             variant="body2"

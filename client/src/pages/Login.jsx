@@ -9,7 +9,7 @@ import LockIcon from '@mui/icons-material/Lock';
 import LoginIcon from '@mui/icons-material/Login';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
-import BrandMark from '../components/BrandMark';
+import BrandMark, { BrandWordmark } from '../components/BrandMark';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import { BRAND_NAME } from '../config/branding';
@@ -54,7 +54,7 @@ export default function Login() {
         <CardContent sx={{ p: 3 }}>
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 3 }}>
             <BrandMark size={72} sx={{ mb: 1.5, filter: 'drop-shadow(0 8px 18px rgba(0, 77, 64, 0.28))' }} />
-            <Typography variant="h5" sx={{ fontWeight: 800 }}>{BRAND_NAME}</Typography>
+            <BrandWordmark variant="light" typographyProps={{ variant: 'h5' }} />
             <Typography variant="body2" color="text.secondary">Pharmacy Billing & Inventory</Typography>
           </Box>
 

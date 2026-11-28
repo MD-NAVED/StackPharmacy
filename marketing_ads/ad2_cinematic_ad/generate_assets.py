@@ -164,9 +164,11 @@ def build_logo_pngs() -> tuple[str, str]:
         icon = Image.open(sting_icon_path).convert("RGBA").resize((320, 320), Image.LANCZOS)
         img.paste(icon, (130, 210), icon)
 
-    # Unified charcoal #212121 wordmark matching official web & brand kit
+    # Two-tone bold wordmark matching official Option D web & brand kit (#053B36 + #0E8378)
     f_word = font(FONT_BOLD, 168)
-    d.text((495, 224), "StackPharmacy", font=f_word, fill=(33, 33, 33, 255))
+    w_s = d.textlength("Stack", font=f_word)
+    d.text((495, 224), "Stack", font=f_word, fill=(5, 59, 54, 255))
+    d.text((495 + w_s, 224), "Pharmacy", font=f_word, fill=(14, 131, 120, 255))
 
     d.text(
         (505, 424),
@@ -186,9 +188,11 @@ def build_logo_pngs() -> tuple[str, str]:
         vimg.paste(vicon, ((VW - 360) // 2, 120), vicon)
 
     fv = font(FONT_BOLD, 134)
-    w_all = vd.textlength("StackPharmacy", font=fv)
-    sx = (VW - w_all) / 2
-    vd.text((sx, 535), "StackPharmacy", font=fv, fill=(33, 33, 33, 255))
+    w_sv = vd.textlength("Stack", font=fv)
+    w_pv = vd.textlength("Pharmacy", font=fv)
+    sx = (VW - (w_sv + w_pv)) / 2
+    vd.text((sx, 535), "Stack", font=fv, fill=(5, 59, 54, 255))
+    vd.text((sx + w_sv, 535), "Pharmacy", font=fv, fill=(14, 131, 120, 255))
     tag = "SMART STOCK & EXPIRY GUARD"
     wt = vd.textlength(tag, font=font(FONT_BOLD, 42))
     vd.text(((VW - wt) / 2, 710), tag, font=font(FONT_BOLD, 42), fill=(100, 116, 139, 240))

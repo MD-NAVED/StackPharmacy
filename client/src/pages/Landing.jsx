@@ -13,7 +13,7 @@ import {
   Divider
 } from '@mui/material';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
-import BrandMark from '../components/BrandMark';
+import BrandMark, { BrandWordmark } from '../components/BrandMark';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
 import SmartphoneIcon from '@mui/icons-material/Smartphone';
 import BoltIcon from '@mui/icons-material/Bolt';
@@ -91,12 +91,11 @@ export default function Landing() {
           >
             <BrandMark size={36} />
             <Box>
-              <Typography
-                variant="h6"
-                sx={{ fontWeight: 800, color: '#212121', lineHeight: 1.1, fontSize: '1.15rem' }}
-              >
-                {BRAND_NAME}
-              </Typography>
+              <BrandWordmark
+                variant="light"
+                typographyProps={{ variant: 'h6' }}
+                sx={{ lineHeight: 1.1, fontSize: '1.15rem' }}
+              />
               <Typography
                 variant="caption"
                 sx={{ color: '#64748B', display: 'block', fontSize: '0.72rem', fontWeight: 500 }}
@@ -630,9 +629,11 @@ export default function Landing() {
         <Container maxWidth="sm" disableGutters sx={{ textAlign: 'center' }}>
           <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1, mb: 1 }}>
             <BrandMark size={30} variant="dark" />
-            <Typography variant="h6" sx={{ fontWeight: 800, color: '#FFFFFF', fontSize: '1.1rem' }}>
-              {BRAND_NAME}
-            </Typography>
+            <BrandWordmark
+              variant="dark"
+              typographyProps={{ variant: 'h6' }}
+              sx={{ fontSize: '1.1rem' }}
+            />
           </Box>
           <Typography variant="body2" sx={{ color: '#94A3B8', fontSize: '0.85rem', mb: 2.5, maxWidth: 360, mx: 'auto' }}>
             {BRAND_TAGLINE}
